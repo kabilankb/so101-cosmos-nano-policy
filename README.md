@@ -62,6 +62,18 @@ GPU and disk tiles, and per-job log tails. It binds to `127.0.0.1` and **refuses
 launching on any other interface** — the buttons run shell commands. Use `--no-launch` for
 a read-only dashboard.
 
+## Post-training
+
+The policy itself is produced by a LoRA fine-tune of `nvidia/Cosmos3-Nano` — adapters on
+the `moe_gen` projections plus full-rank training of action heads that **initialise from
+random**, because the public base has no SO-101 action heads. The training set is narrowed
+to five dense single-object instructions (97 episodes, 35,132 frames), which takes one
+epoch from 36,799 iterations to 899 and makes convergence possible on a single GPU.
+
+**[docs/post-training.md](docs/post-training.md)** covers it end to end: staging the
+dataset and base checkpoint, the config and why each setting is what it is, launching,
+auto-resume after a power cut, and how to pick a checkpoint — which is not by lowest loss.
+
 ## Package structure
 
 ```
@@ -78,6 +90,8 @@ src/so101_cosmos/
     server.py    stdlib HTTP control panel
     static/      the page it serves
 tests/           command construction, log parsing, config resolution, inventory
+docs/
+  post-training.md  the fine-tune recipe: dataset narrowing, LoRA, launch, resume
 ```
 
 The split that matters is `pipeline.py` versus `proc.py`: **construction is pure and
