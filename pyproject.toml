@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Post-training, serving and digital-twin evaluation pipeline for the SO-101 Cosmos3-Nano action policy"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "Kabilan KB", email = "richard.albert.k@gmail.com" }]
-maintainers = [{ name = "Kabilan KB", email = "richard.albert.k@gmail.com" }]
+authors = [{ name = "Kabilan KB", email = "kabilankb200@gmail.com" }]
+maintainers = [{ name = "Kabilan KB", email = "kabilankb200@gmail.com" }]
 keywords = ["robotics", "cosmos", "so-101", "lerobot", "isaac-lab", "vla", "post-training"]
 classifiers = [
   "Development Status :: 4 - Beta",
