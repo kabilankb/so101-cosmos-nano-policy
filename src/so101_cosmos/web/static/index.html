@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 Cosmos — server &amp; client</title>
+<style>
+:root {
+  --bg: #eff2f2; --surface: #fff; --surface-2: #e4eae9;
+  --ink: #131a1c; --ink-2: #435157; --ink-3: #6d8087;
+  --rule: #d0d9d8; --accent: #a2481c;
+  --ok: #1a6b45; --ok-wash: #dbeee4;
+  --warn: #85610b; --warn-wash: #f4ebd4;
+  --crit: #9e2b21; --crit-wash: #f6e0dd;
+  --term-bg: #10171a; --term-ink: #d4dedf; --term-dim: #6f8489;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1315; --surface: #161d20; --surface-2: #1d2629;
+    --ink: #e5ecec; --ink-2: #a7b6ba; --ink-3: #7a8c91;
+    --rule: #293336; --accent: #dd8b57;
+    --ok: #52bd8b; --ok-wash: #14302a;
+    --warn: #d3a53f; --warn-wash: #2e2716;
+    --crit: #e8796c; --crit-wash: #331d1a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); }
+.wrap { max-width: 74rem; margin: 0 auto; padding: 1.75rem 1.25rem 4rem; }
+
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem 1.25rem; margin-bottom: .35rem; }
+h1 { font-size: 1.4rem; margin: 0; letter-spacing: -.01em; }
+.sub { font-family: var(--mono); font-size: .74rem; color: var(--ink-3); }
+.banner { background: var(--warn-wash); color: var(--warn); border-left: 3px solid var(--warn);
+  padding: .5rem .75rem; border-radius: 0 3px 3px 0; margin: .75rem 0 0; font-size: .84rem; }
+
+h2 { font-size: .74rem; font-family: var(--mono); letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-3); margin: 2rem 0 .6rem; font-weight: 500; }
+
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; }
+
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 1rem 1.1rem 1.1rem; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .2rem; }
+.panel h3 { margin: 0; font-size: 1.05rem; }
+.role { font-family: var(--mono); font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--accent); }
+.panel .where { font-family: var(--mono); font-size: .74rem; color: var(--ink-3); margin: .1rem 0 .8rem; word-break: break-all; }
+
+.dot { display: inline-flex; align-items: center; gap: .4rem; font-size: .78rem; font-family: var(--mono); }
+.dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+.dot.up::before { background: var(--ok); }
+.dot.busy::before { background: var(--warn); }
+.dot.down::before { background: var(--rule); }
+
+.row { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+button { font: 500 .8rem var(--sans); padding: .38rem .8rem; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--surface-2); color: var(--ink); }
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: .42; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { color: #fff; filter: brightness(1.08); }
+button.danger { color: var(--crit); border-color: var(--crit); background: transparent; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+select { font: .8rem var(--mono); padding: .34rem .5rem; border-radius: 3px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink); }
+
+.note { font-size: .78rem; color: var(--ink-3); margin: .7rem 0 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+th { text-align: left; font: 500 .66rem var(--mono); letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-3); padding: 0 .7rem .4rem 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+td { padding: .34rem .7rem .34rem 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+td.m { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+tr.best td { background: var(--ok-wash); }
+.scroll { overflow-x: auto; }
+
+.chip { font: .66rem var(--mono); padding: .1rem .4rem; border-radius: 2px; white-space: nowrap; }
+.chip.ok { background: var(--ok-wash); color: var(--ok); }
+.chip.no { background: var(--surface-2); color: var(--ink-3); }
+.chip.run { background: var(--warn-wash); color: var(--warn); }
+.chip.err { background: var(--crit-wash); color: var(--crit); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.tile { background: var(--surface); padding: .7rem .85rem .8rem; }
+.tile .k { font: .64rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: block; }
+.tile .v { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .v.warn { color: var(--warn); }
+
+pre { background: var(--term-bg); color: var(--term-ink); font: .75rem/1.55 var(--mono);
+  padding: .8rem .9rem; border-radius: 4px; overflow-x: auto; margin: .6rem 0 0; max-height: 22rem; }
+pre:empty { display: none; }
+
+#toast { position: fixed; right: 1rem; bottom: 1rem; background: var(--crit-wash); color: var(--crit);
+  border: 1px solid var(--crit); padding: .55rem .8rem; border-radius: 3px; font-size: .82rem;
+  max-width: 26rem; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>SO-101 Cosmos</h1>
+  <span class="sub" id="rundir">loading…</span>
+</header>
+<div class="banner" id="banner" hidden></div>
+
+<h2>Pipeline</h2>
+<div class="pair">
+
+  <section class="panel">
+    <div class="panel-head">
+      <div><span class="role">Server</span><h3>Cosmos policy</h3></div>
+      <span class="dot down" id="server-dot">unknown</span>
+    </div>
+    <p class="where" id="server-where">—</p>
+    <label class="sub" for="ckpt">checkpoint</label>
+    <div class="row">
+      <select id="ckpt"></select>
+      <button class="primary" data-stage="serve" id="btn-serve">Serve</button>
+      <button data-stop="serve" id="btn-serve-stop" class="danger">Stop</button>
+    </div>
+    <div class="row">
+      <button data-stage="merge">Merge LoRA</button>
+      <button data-stage="export">Export</button>
+      <button data-stage="train">Train</button>
+    </div>
+    <p class="note">Serve needs an exported checkpoint — merge, then export, first.
+    Load takes ~2 min and settles near 32 GB.</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div><span class="role">Client</span><h3>Isaac Lab simulation</h3></div>
+      <span class="dot down" id="client-dot">idle</span>
+    </div>
+    <p class="where" id="client-where">—</p>
+    <div class="row">
+      <button data-stage="warmup" id="btn-warmup">Warm up</button>
+      <button class="primary" data-stage="evaluate" id="btn-eval">Evaluate</button>
+      <button data-stage="evaluate_gui">Evaluate (GUI)</button>
+      <button data-stop="evaluate" class="danger">Stop</button>
+    </div>
+    <p class="note">Warm up first: the first request compiles for minutes, and the client
+    connects once and dies on refusal. Start the server before either.</p>
+  </section>
+</div>
+
+<h2>System</h2>
+<div class="tiles" id="tiles"></div>
+
+<h2>Checkpoints</h2>
+<div class="scroll"><table>
+  <thead><tr>
+    <th>Iteration</th><th class="n">Epochs</th><th>Merged</th><th>Export</th>
+    <th class="n">Episodes</th><th class="n">Successes</th><th class="n">Rate</th><th></th>
+  </tr></thead>
+  <tbody id="ckpts"></tbody>
+</table></div>
+
+<h2>Jobs</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Job</th><th>Side</th><th>Status</th><th class="n">PID</th><th>Started</th><th></th></tr></thead>
+  <tbody id="jobs"></tbody>
+</table></div>
+<pre id="joblog"></pre>
+
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let data = null, watching = null;
+
+const fmtBytes = (n) => {
+  if (n == null) return "—";
+  const u = ["B","K","M","G","T"]; let i = 0;
+  while (Math.abs(n) >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i <= 1 ? n.toFixed(0) : n.toFixed(1)) + u[i];
+};
+const ago = (t) => {
+  if (!t) return "—";
+  const s = Math.max(0, Date.now() / 1000 - t);
+  if (s < 90) return Math.round(s) + "s ago";
+  if (s < 5400) return Math.round(s / 60) + "m ago";
+  return Math.round(s / 3600) + "h ago";
+};
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.style.display = "block";
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = "none"; }, 6000);
+}
+
+async function post(path, body) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({ error: "bad response" }));
+  if (!r.ok || j.error) { toast(j.error || "request failed"); return null; }
+  return j;
+}
+
+async function launch(stage) {
+  const iter = $("ckpt").value;
+  const needsIter = ["merge", "export", "serve"].includes(stage);
+  if (needsIter && !iter) { toast("pick a checkpoint first"); return; }
+  const j = await post("/api/launch", {
+    stage,
+    iteration: needsIter ? Number(iter) : null,
+  });
+  if (j) { watching = j.job.id; refresh(); }
+}
+
+async function stopStage(stage) {
+  const job = (data.jobs || []).find(
+    (j) => j.status === "running" && (j.stage === stage || j.stage === stage + "_gui"));
+  if (!job) { toast("nothing running for " + stage); return; }
+  if (await post("/api/stop", { job: job.id })) refresh();
+}
+
+function renderPanels(d) {
+  const s = d.state.server, c = d.state.client;
+  const sdot = $("server-dot");
+  const up = s.listening;
+  sdot.className = "dot " + (up ? "up" : s.job ? "busy" : "down");
+  sdot.textContent = up ? "listening :" + s.port : s.job ? "starting…" : "not running";
+  $("server-where").textContent = s.job
+    ? `${s.job.stage} iter ${s.job.iteration ?? "—"} · pid ${s.job.pid}`
+    : d.run_dir;
+
+  const cdot = $("client-dot");
+  cdot.className = "dot " + (c.job ? "busy" : "down");
+  cdot.textContent = c.job ? c.job.stage.replace("_", " ") : "idle";
+  $("client-where").textContent = c.job
+    ? `pid ${c.job.pid} · started ${ago(c.job.started)}`
+    : "So101Bench-Bin-v0";
+
+  $("btn-serve").disabled = !d.launch_enabled || !!s.job;
+  $("btn-eval").disabled = !d.launch_enabled || !!c.job || !up;
+  $("btn-warmup").disabled = !d.launch_enabled || !up;
+  document.querySelectorAll("[data-stage]").forEach((b) => {
+    if (!d.launch_enabled) b.disabled = true;
+  });
+}
+
+function renderTiles(d) {
+  const g = d.gpu || {}, k = d.disk || {}, t = d.training || {};
+  const cells = [
+    ["GPU temp", g.temp != null ? g.temp.toFixed(0) + " °C" : "—", ""],
+    ["Power", g.power != null ? g.power.toFixed(0) + " W" : "—", ""],
+    ["GPU memory", g.mem_used != null ? (g.mem_used / 1024).toFixed(1) + " G" : "—", ""],
+    ["Disk free", fmtBytes(k.free), k.free != null && k.free < 88 * 1024 ** 3 ? "warn" : ""],
+    ["Iteration", t.iter != null ? t.iter + " / " + t.max_iter : "—", ""],
+    ["Loss", t.loss != null ? t.loss.toFixed(3) : "—", ""],
+  ];
+  $("tiles").innerHTML = cells.map(([k2, v, cls]) =>
+    `<div class="tile"><span class="k">${k2}</span><span class="v ${cls}">${v}</span></div>`).join("");
+}
+
+function renderCheckpoints(d) {
+  const best = d.checkpoints.reduce(
+    (a, c) => (c.successes > (a?.successes ?? 0) ? c : a), null);
+  $("ckpts").innerHTML = d.checkpoints.map((c) => `
+    <tr class="${best && c.iteration === best.iteration && c.successes > 0 ? "best" : ""}">
+      <td class="m">${c.iteration}</td>
+      <td class="n">${c.epochs?.toFixed(2) ?? "—"}</td>
+      <td><span class="chip ${c.merged ? "ok" : "no"}">${c.merged ? "yes" : "—"}</span></td>
+      <td><span class="chip ${c.servable ? "ok" : "no"}">${c.servable ? "ready" : "—"}</span></td>
+      <td class="n">${c.episodes || "—"}</td>
+      <td class="n">${c.successes || (c.episodes ? 0 : "—")}</td>
+      <td class="n">${c.rate != null ? (100 * c.rate).toFixed(1) + "%" : "—"}</td>
+      <td>${c.servable ? `<button data-pick="${c.iteration}">Select</button>` : ""}</td>
+    </tr>`).join("");
+}
+
+function renderSelect(d) {
+  const sel = $("ckpt"), keep = sel.value;
+  const opts = d.checkpoints.map((c) =>
+    `<option value="${c.iteration}">${c.iteration}${c.servable ? " · servable" : ""}</option>`);
+  sel.innerHTML = opts.join("");
+  const preferred = d.checkpoints.filter((c) => c.successes > 0)[0]
+    ?? d.checkpoints.filter((c) => c.servable).slice(-1)[0];
+  sel.value = keep || (preferred ? preferred.iteration : "");
+}
+
+function renderJobs(d) {
+  $("jobs").innerHTML = (d.jobs || []).map((j) => {
+    const cls = j.status === "running" ? "run" : j.status === "done" ? "ok" : "err";
+    return `<tr>
+      <td class="m">${j.id}</td>
+      <td>${j.side}</td>
+      <td><span class="chip ${cls}">${j.status}</span></td>
+      <td class="n">${j.pid ?? "—"}</td>
+      <td>${ago(j.started)}</td>
+      <td><button data-log="${j.id}">Log</button></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6">no jobs yet</td></tr>`;
+}
+
+async function showLog(id) {
+  watching = id;
+  const r = await fetch("/api/logs/" + encodeURIComponent(id));
+  const j = await r.json();
+  $("joblog").textContent = (j.lines || []).join("\n") || "(empty)";
+}
+
+async function refresh() {
+  try {
+    const r = await fetch("/api/state");
+    data = await r.json();
+  } catch { return; }
+  $("rundir").textContent = data.run_dir;
+  const b = $("banner");
+  if (!data.launch_enabled) {
+    b.hidden = false;
+    b.textContent = "Read-only: launching is disabled (--no-launch).";
+  } else b.hidden = true;
+
+  renderPanels(data);
+  renderTiles(data);
+  renderSelect(data);
+  renderCheckpoints(data);
+  renderJobs(data);
+  if (watching) showLog(watching);
+}
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.dataset.stage) launch(t.dataset.stage);
+  else if (t.dataset.stop) stopStage(t.dataset.stop);
+  else if (t.dataset.pick) $("ckpt").value = t.dataset.pick;
+  else if (t.dataset.log) showLog(t.dataset.log);
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
