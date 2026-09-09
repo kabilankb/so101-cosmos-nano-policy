@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "so101-cosmos"
+version = "0.1.0"
+description = "Post-training, serving and digital-twin evaluation pipeline for the SO-101 Cosmos3-Nano action policy"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "kabilankb" }]
+keywords = ["robotics", "cosmos", "so-101", "lerobot", "isaac-lab", "vla", "post-training"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Deliberately empty. This package orchestrates subprocesses in two foreign
+# interpreters -- cosmos-framework's uv venv (torch, py3.13) and Isaac Sim's Kit
+# python (omni, isaaclab) -- and must stay installable in neither. Importing
+# torch or omni here would tie the controller to one of the two environments it
+# exists to keep apart. See README, "Why no dependencies".
+dependencies = []
+
+[project.optional-dependencies]
+# Only needed to run `so101 warmup` in-process. The Kit python already has these;
+# install this extra if you want to probe the server from the controller's own
+# interpreter instead.
+client = ["numpy>=1.24", "openpi-client>=0.1"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+so101 = "so101_cosmos.cli:main"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/so101_cosmos"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/so101_cosmos", "tests", "README.md", "so101.example.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
