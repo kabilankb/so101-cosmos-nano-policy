@@ -30,6 +30,16 @@ so101 --help
 Requires Python 3.11+ (for `tomllib`). Install it wherever you like — deliberately *not*
 into either of the two environments it drives.
 
+Those two environments are set up separately, once each:
+
+| | |
+| --- | --- |
+| **[docs/setup-cosmos.md](docs/setup-cosmos.md)** | the server: `cosmos-framework`, its venv, HF access, the base checkpoint, and the `LD_LIBRARY_PATH` fix that stops every biased `addmm` from failing |
+| **[docs/setup-isaaclab.md](docs/setup-isaaclab.md)** | the client: `so101_bench` under Isaac Sim's Kit python, USD assets, the shadowed-checkout trap, and the patches `cosmos3_eval.py` needs |
+| **[docs/post-training.md](docs/post-training.md)** | producing the policy: dataset narrowing, the LoRA recipe, launching, resuming, choosing a checkpoint |
+
+`so101 doctor` checks both environments once they are in place.
+
 ## Use
 
 ```shell
@@ -91,7 +101,9 @@ src/so101_cosmos/
     static/      the page it serves
 tests/           command construction, log parsing, config resolution, inventory
 docs/
-  post-training.md  the fine-tune recipe: dataset narrowing, LoRA, launch, resume
+  setup-cosmos.md    server environment: venv, HF access, base checkpoint, cuBLAS fix
+  setup-isaaclab.md  client environment: Kit python, USD assets, eval-script patches
+  post-training.md   the fine-tune recipe: dataset narrowing, LoRA, launch, resume
 ```
 
 The split that matters is `pipeline.py` versus `proc.py`: **construction is pure and
