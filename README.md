@@ -193,6 +193,11 @@ python3.10 site-packages on the path, and pytest auto-loads the `launch_testing`
 from it, which fails on `import yaml` before any test runs. The same inherited profile is
 why `LD_LIBRARY_PATH` has to be fixed for the GPU stages.
 
+## Author
+
+**Kabilan KB** — pipeline, dataset narrowing, single-GPU LoRA recipe, evaluation tooling
+and this package.
+
 ## Provenance
 
 Command construction and log parsing are ported from `cosmos-framework`'s

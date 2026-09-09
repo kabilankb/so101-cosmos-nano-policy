@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Post-training, serving and digital-twin evaluation pipeline for the SO-101 Cosmos3-Nano action policy"
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "kabilankb" }]
+authors = [{ name = "Kabilan KB", email = "richard.albert.k@gmail.com" }]
+maintainers = [{ name = "Kabilan KB", email = "richard.albert.k@gmail.com" }]
 keywords = ["robotics", "cosmos", "so-101", "lerobot", "isaac-lab", "vla", "post-training"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -38,11 +39,16 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 so101 = "so101_cosmos.cli:main"
 
 
+[project.urls]
+Homepage = "https://github.com/kabilankb/so101-cosmos-nano-policy"
+Repository = "https://github.com/kabilankb/so101-cosmos-nano-policy"
+Issues = "https://github.com/kabilankb/so101-cosmos-nano-policy/issues"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/so101_cosmos"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/so101_cosmos", "tests", "README.md", "so101.example.toml"]
+include = ["src/so101_cosmos", "tests", "docs", "README.md", "so101.example.toml"]
 
 [tool.ruff]
 line-length = 100
