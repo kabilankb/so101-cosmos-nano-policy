@@ -53,6 +53,8 @@ include = ["src/so101_cosmos", "tests", "docs", "README.md", "so101.example.toml
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# edge/ holds reference copies of cosmos-framework recipe and tool files, linted there.
+extend-exclude = ["edge"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

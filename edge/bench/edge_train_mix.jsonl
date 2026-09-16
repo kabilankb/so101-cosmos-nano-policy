@@ -1,0 +1,75 @@
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 0, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 1, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 2, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 3, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 4, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 5, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 6, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 7, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 8, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["green shoes"], "ood_key": "seen", "trial_id": 9, "n_objects": 1, "task_family": "bin", "instruction": "Place the green shoes in the plastic bin", "target": "green shoes"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 10, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 11, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 12, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 13, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 14, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 15, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 16, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 17, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 18, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["cardboard box"], "ood_key": "seen", "trial_id": 19, "n_objects": 1, "task_family": "bin", "instruction": "Place the cardboard box in the plastic bin", "target": "cardboard box"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 20, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 21, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 22, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 23, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 24, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 25, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 26, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 27, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 28, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["altoids container"], "ood_key": "seen", "trial_id": 29, "n_objects": 1, "task_family": "bin", "instruction": "Place the altoids container in the plastic bin", "target": "altoids container"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 30, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 31, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 32, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 33, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 34, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 35, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 36, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 37, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 38, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["flower pot"], "ood_key": "seen", "trial_id": 39, "n_objects": 1, "task_family": "bin", "instruction": "Place the flower pot in the plastic bin", "target": "flower pot"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 40, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 41, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 42, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 43, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 44, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 45, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 46, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 47, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 48, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["cooking spoon"], "ood_key": "seen", "trial_id": 49, "n_objects": 1, "task_family": "bin", "instruction": "Place the cooking spoon in the plastic bin", "target": "cooking spoon"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "flower pot"], "ood_key": "seen", "trial_id": 50, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "flower pot"], "ood_key": "seen", "trial_id": 51, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "flower pot"], "ood_key": "seen", "trial_id": 52, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "flower pot"], "ood_key": "seen", "trial_id": 53, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "flower pot"], "ood_key": "seen", "trial_id": 54, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "cooking spoon"], "ood_key": "seen", "trial_id": 55, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "cooking spoon"], "ood_key": "seen", "trial_id": 56, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "cooking spoon"], "ood_key": "seen", "trial_id": 57, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "cooking spoon"], "ood_key": "seen", "trial_id": 58, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "altoids container", "cooking spoon"], "ood_key": "seen", "trial_id": 59, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 60, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 61, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 62, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 63, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "cardboard box", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 64, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 65, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 66, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 67, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 68, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["green shoes", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 69, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["cardboard box", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 70, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["cardboard box", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 71, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["cardboard box", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 72, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["cardboard box", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 73, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}
+{"objects": ["cardboard box", "altoids container", "flower pot", "cooking spoon"], "ood_key": "seen", "trial_id": 74, "n_objects": 4, "task_family": "bin", "instruction": "Place each object in the plastic bin"}

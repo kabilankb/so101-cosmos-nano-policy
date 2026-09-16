@@ -111,9 +111,13 @@ def has_error(path: Path, lines: int = 400) -> str | None:
     return None
 
 
-def newest_training_log(framework: Path) -> Path | None:
-    """Most recently modified ``train_resume_*.log`` under ``outputs/``."""
-    hits = sorted(
-        framework.glob("outputs/train_resume_*.log"), key=lambda p: p.stat().st_mtime
-    )
+def newest_training_log(
+    framework: Path, pattern: str = "outputs/train_resume_*.log"
+) -> Path | None:
+    """Most recently modified training log matching ``pattern`` under ``framework``.
+
+    ``pattern`` defaults to the Nano resume script's naming so existing callers
+    are unaffected; the Edge run passes its own from ``cfg.train_log_glob``.
+    """
+    hits = sorted(framework.glob(pattern), key=lambda p: p.stat().st_mtime)
     return hits[-1] if hits else None

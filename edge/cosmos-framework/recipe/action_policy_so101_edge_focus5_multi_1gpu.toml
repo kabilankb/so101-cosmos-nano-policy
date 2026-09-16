@@ -1,0 +1,168 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: OpenMDW-1.1
+
+# ============================================================================
+# SO-101 action-policy SFT -- SINGLE-GPU, COSMOS3-EDGE, FOCUS5 + CLUTTER.
+#
+# Edge-tier counterpart of action_policy_so101_nano_focus5_multi_1gpu.toml.
+# Same dataset mix, same 1-GPU budget; what changes is the model tier and how
+# much of it actually gets updated.
+#
+# Why Edge here
+# -------------
+# Edge is the smaller tier, not the more accurate one -- the released DROID
+# policies score Edge 22.9% vs Nano 36.8% on RoboLab. The reason to run it on
+# this box is capacity per unit of VRAM. Nano's Qwen3-VL-8B backbone only fit as
+# rank-16 LoRA on *_moe_gen at global batch 32; Edge's Nemotron-2B-Dense-VL
+# backbone is roughly a quarter of that trainable surface, so the same 96 GB
+# buys rank-32 adapters, double the microbatch, and more epochs over the same
+# 128 training episodes. On a dataset this small, adaptation capacity is the
+# binding constraint, not the pretrained ceiling.
+#
+# Three changes target the accuracy/precision problem directly
+# ------------------------------------------------------------
+# 1. WARM ACTION HEADS. Initialises from nvidia/Cosmos3-Edge-Policy-DROID and
+#    *keeps* its action heads instead of re-randomising them, where the Nano run
+#    spent its whole budget relearning them from scratch on 128 episodes.
+#
+#    Loading that checkpoint is necessary but NOT sufficient: action2llm /
+#    llm2action are DomainAwareLinear, i.e. nn.Embedding(num_domains, out*in),
+#    so each embodiment owns a private row. DROID trained row 8; SO-101 is row
+#    22, which in the released checkpoint is still xavier init with a zero bias
+#    (measured: fc norm 10.67 vs 6.44, bias 1.56 vs 0.000). So
+#    BASE_CHECKPOINT_PATH must point at a conversion of the checkpoint produced
+#    by tools/transplant_domain.py, which copies row 8 into row 22. Pointing it
+#    at the plain ...-dcp gives cold SO-101 heads and is the control, not the
+#    treatment. (SO101_EDGE_COLD_HEADS=1 reverts to fresh init entirely.)
+# 2. CORRECT FLOW-MATCHING SHIFT. EDGE_MODEL_CONFIG is natively resolution
+#    "480", matching the 480x640-per-camera SO-101 data, so training draws
+#    shift=5. The Nano recipe left resolution="720" and therefore trained with
+#    shift=10 against 480p input.
+# 3. MORE TRAINABLE RANK. lora_rank 32 / alpha 64, double the Nano recipe's
+#    16/32. Edge's backbone is small enough that the extra adapter capacity
+#    costs little, and rank is the knob that decides how much task-specific
+#    grasp behaviour the policy can actually store.
+#
+# Dataset (unchanged from the Nano focus5+multi mix; max_episodes_per_task 45,
+# val_ratio 0.10):
+#   Place each object in the plastic bin           45 eps   ~35,700 frames
+#   Place the green shoes in the plastic bin       25         11,032
+#   Place the cooking spoon in the plastic bin     18          7,095
+#   Place the cardboard box in the plastic bin     18          6,256
+#   Place the flower pot in the plastic bin        18          5,819
+#   Place the altoids container in the plastic bin 18          4,930
+#   -------------------------------------------------------------------
+#   142 episodes kept -> 128 train / 14 val
+#
+# Horizon: measured by instantiating the loader, not estimated from frames --
+# 128 train episodes / 55,385 windows, so at global batch 32 one epoch is 1,731
+# iterations. 7000 iters = 4.05 epochs, landing in the 4.0-4.3 epoch window
+# where the Nano focus5 run produced its only working checkpoint.
+#
+# DISK: measured 6.5 GB per checkpoint (Nano's were ~29 GB), so 14 saves is
+# ~91 GB rather than Nano's ~406 GB. Disk is no longer the binding constraint
+# on save_iter.
+#
+# Env required (set by the paired launcher):
+#   SO101_ROOT, BASE_CHECKPOINT_PATH, WAN_VAE_PATH, IMAGINAIRE_OUTPUT_ROOT
+# ============================================================================
+
+[job]
+task       = "vfm"
+experiment = "action_policy_so101_edge_focus5_multi"
+project    = "cosmos3_action"
+group      = "action_sft_sim"
+name       = "action_policy_so101_edge_focus5_multi_1gpu"
+wandb_mode = "disabled"
+
+[model]
+precision           = "bfloat16"
+lora_enabled        = true
+# rank 64 / alpha 128 -- 4x the Nano recipe's rank 16. Sized from measurement,
+# not guessed: at rank 64 + microbatch 16 the run peaks at 26.1 GB of 96 GB, so
+# memory is nowhere near binding. 25,690,112 LoRA params + 8,458,240 action-head
+# params = 1.006% of the model trainable (Nano's rank-16 recipe was far less).
+lora_rank           = 64
+lora_alpha          = 128
+# Attention projections on the generation expert only -- same four targets as the
+# Nano recipe, and deliberately NOT extended to the MLP.
+#
+# The MoT layer suffixes only the decoder layer's DIRECT children with _moe_gen
+# (q/k/v/o_proj_moe_gen, mlp_moe_gen, norm_moe_gen). The gen MLP's own children
+# are plain gate_proj / up_proj / down_proj, identical in name to the frozen
+# understanding tower's. Since lora.py matches by EXACT child name anywhere in
+# the tree, "gate_proj_moe_gen" would match nothing (silent warning, 0 modules),
+# and bare "gate_proj" would inject adapters into the und tower as well -- which
+# this recipe, like the Nano one, intends to keep frozen. So the gen MLP is not
+# LoRA-targetable by name here; rank is the lever instead.
+#
+# If rank-32 adapters still underfit, the next lever is adding "mlp_moe_gen" to
+# lora_extra_trainable, which trains the gen MLP at FULL rank (substring match on
+# parameter names, so it is correctly gen-tower-scoped). Costs materially more
+# memory -- re-measure with a smoke run before committing.
+lora_target_modules  = "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
+lora_extra_trainable = "action2llm,llm2action,action_modality_embed"
+
+[model.ema]
+enabled = false
+
+[model.parallelism]
+data_parallel_shard_degree     = 1
+data_parallel_replicate_degree = 1
+
+[model.activation_checkpointing]
+# "selective" (per-op SAC) rather than Nano's "full" block recompute. With 66 GB
+# of the card idle there is no reason to pay full recompute. Measured: it does
+# not actually buy throughput here (the GPU sits at 100% util against the 600 W
+# power cap either way), but it costs nothing and leaves headroom for the
+# mlp_moe_gen lever below.
+mode           = "selective"
+save_ops_regex = ["fmha"]
+
+[model.tokenizer]
+vae_path = "${oc.env:WAN_VAE_PATH}"
+
+[optimizer]
+lr = 1.0e-04
+keys_to_select = ["lora_", "action2llm", "llm2action", "action_modality_embed"]
+
+[optimizer.lr_multipliers]
+# Uniform 1.0x, unlike the Nano recipe's 5x. The 5x exists to let randomly
+# initialised action heads catch up. Here every part of the action path starts
+# trained: action2llm/llm2action row 22 carries DROID's row 8 after
+# tools/transplant_domain.py, and action_modality_embed is a single shared
+# vector that DROID trained directly. Keeping 5x on warm weights would just
+# destroy them in the first few hundred steps.
+#
+# If you run with SO101_EDGE_COLD_HEADS=1, or point BASE_CHECKPOINT_PATH at the
+# UN-transplanted ...-dcp, set these back to 5.0 -- the heads are cold again.
+action2llm            = 1.0
+llm2action            = 1.0
+action_modality_embed = 1.0
+
+[scheduler]
+cycle_lengths = [7000]
+warm_up_steps = [200]
+
+[dataloader_train]
+# 16, four times Nano's 4. Measured peak 26.1 GB of 96 GB at this setting.
+max_samples_per_batch = 16
+
+[trainer]
+# 7000 iters x measured ~20 s/iter = ~39 h for 4.05 epochs. (The Nano run was
+# ~40 s/iter for the same global batch, i.e. ~78 h.)
+max_iter        = 7000
+logging_iter    = 10
+grad_accum_iter = 2    # global batch = 16 x 1 rank x 2 = 32, same as the Nano run
+
+[checkpoint]
+load_path = "${oc.env:BASE_CHECKPOINT_PATH}"
+# NOTE: action2llm / llm2action / action_modality_embed are deliberately ABSENT
+# from this list -- they load from the Edge DROID policy. Only EMA (warm-started
+# from net) and the LoRA adapters (which exist in no base checkpoint) are
+# skipped. This is the inverse of the Nano recipe and is intentional.
+keys_to_skip_loading = [
+    "net_ema.",
+    "lora_",
+]
+save_iter = 500

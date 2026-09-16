@@ -35,7 +35,7 @@ def payload(cfg: Settings, store: JobStore, sampler: telemetry.Sampler,
         rows.append({**row, "episodes": h.get("episodes", 0),
                      "successes": h.get("successes", 0), "rate": h.get("rate")})
 
-    log = newest_training_log(cfg.framework)
+    log = newest_training_log(cfg.framework, cfg.train_log_glob)
     points = parse_training(log)[-400:] if log else []
 
     return {

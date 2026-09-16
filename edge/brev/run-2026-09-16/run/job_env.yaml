@@ -1,0 +1,3 @@
+PWD: /home/<brev-user>/cosmos-framework
+job_local_path: /home/<brev-user>/cosmos-framework/outputs/train/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu
+s3: s3:///cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/

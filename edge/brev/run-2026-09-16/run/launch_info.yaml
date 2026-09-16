@@ -1,0 +1,7 @@
+cmd: /home/<brev-user>/cosmos-framework/cosmos_framework/scripts/train.py --sft-toml=/home/<brev-user>/cosmos-framework/examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml
+  -- model.config.parallelism.data_parallel_shard_degree=2 trainer.grad_accum_iter=1
+args_cfg_path: /home/<brev-user>/cosmos-framework/examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml
+args_override:
+- --
+- model.config.parallelism.data_parallel_shard_degree=2
+- trainer.grad_accum_iter=1

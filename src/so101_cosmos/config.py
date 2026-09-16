@@ -65,6 +65,10 @@ class Settings:
     action_horizon: int = 32
 
     # -- training bookkeeping ------------------------------------------------
+    # Where this run's training log lives, relative to `framework`. The default
+    # is the Nano resume script's pattern; the Edge run writes elsewhere, and a
+    # mismatched glob silently reports another run's iteration and loss.
+    train_log_glob: str = "outputs/train_resume_*.log"
     max_iter: int = 4000
     save_iter: int = 250
     global_batch: int = 32

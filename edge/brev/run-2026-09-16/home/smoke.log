@@ -1,0 +1,184 @@
+[train] GPUs=2 grad_accum=1 global_batch=32
+[so101-edge] action heads: WARM (loaded from Cosmos3-Edge-Policy-DROID)
+>>> 13:00:16 Checking inputs...
+>>> 13:00:16 WORKDIR:    /home/<brev-user>/cosmos-framework
+>>> 13:00:16 TOML:       /home/<brev-user>/cosmos-framework/examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml
+>>> 13:00:16 dataset:    /home/<brev-user>/cosmos-framework/examples/data/so101_bench_sim_6
+>>> 13:00:16 checkpoint: /home/<brev-user>/cosmos-framework/outputs/train/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500
+>>> 13:00:16 log:        /home/<brev-user>/smoke_out/logs/edge_resume_smoke.log
+W0916 13:00:17.015000 23960 .venv/lib/python3.13/site-packages/torch/distributed/run.py:852] 
+W0916 13:00:17.015000 23960 .venv/lib/python3.13/site-packages/torch/distributed/run.py:852] *****************************************
+W0916 13:00:17.015000 23960 .venv/lib/python3.13/site-packages/torch/distributed/run.py:852] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W0916 13:00:17.015000 23960 .venv/lib/python3.13/site-packages/torch/distributed/run.py:852] *****************************************
+2026-09-16 13:00:21.248 | DEBUG    | cosmos_framework.utils.config:_load_py_config:578 - get_config_module: took 0.09ms
+2026-09-16 13:00:21.541 | DEBUG    | cosmos_framework.utils.config:_load_py_config:578 - get_config_module: took 0.09ms
+2026-09-16 13:00:23.809 | DEBUG    | cosmos_framework.utils.config:_load_py_config:583 - importlib.import_module: took 2560.43ms
+2026-09-16 13:00:23.981 | DEBUG    | cosmos_framework.utils.config:_load_py_config:588 - override: took 172.30ms
+2026-09-16 13:00:23.981 | DEBUG    | cosmos_framework.utils.config:load_config:567 - total time to load config: 2757.64ms
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/distributed.py:60:init] [RANK 1] Initialized distributed training with local rank 1 using nccl with timeout 1800
+2026-09-16 13:00:24.429 | DEBUG    | cosmos_framework.utils.config:_load_py_config:583 - importlib.import_module: took 2887.74ms
+2026-09-16 13:00:24.602 | DEBUG    | cosmos_framework.utils.config:_load_py_config:588 - override: took 173.19ms
+2026-09-16 13:00:24.602 | DEBUG    | cosmos_framework.utils.config:load_config:567 - total time to load config: 3086.85ms
+[09-16 13:00:24|INFO|cosmos_framework/utils/training_telemetry/telemetry.py:63:wrapper] Heimdall telemetry is disabled, if using Heimdall,consider setting ENABLE_TELEMETRY=true to enable it
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/distributed.py:60:init] [RANK 0] Initialized distributed training with local rank 0 using nccl with timeout 1800
+[09-16 13:00:24|INFO|cosmos_framework/utils/distributed.py:72:init] Training with 2 GPUs.
+[09-16 13:00:24|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on init_distributed: 0.09 s
+[09-16 13:00:24|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on init_distributed: 0.00 s
+Config is saved using pickle at /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/config.pkl.
+Config is saved using omegaconf at /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/config.yaml.
+/home/<brev-user>/cosmos-framework/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+[09-16 13:00:24|WARNING|cosmos_framework/utils/misc.py:126:print_environ_variables] Environment variable HF_HOME not set!
+[09-16 13:00:24|INFO|cosmos_framework/utils/misc.py:124:print_environ_variables] Environment variable IMAGINAIRE_OUTPUT_ROOT: /home/<brev-user>/smoke_out
+[09-16 13:00:24|INFO|cosmos_framework/utils/misc.py:138:set_random_seed] Using random seed 42.
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback iter_speed: {'hit_thres': 50, 'save_s3': False, 'save_s3_every_log_n': 500, 'every_n': 1, '_target_': <class 'cosmos_framework.callbacks.iter_speed.IterSpeed'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback manual_gc: {'warm_up': 1, 'gc_level': 1, 'every_n': 5, '_target_': <class 'cosmos_framework.callbacks.manual_gc.ManualGarbageCollection'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback wandb: {'config': None, 'trainer': None, '_target_': <class 'cosmos_framework.utils.callback.WandBCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback wandb_2x: {'logging_iter_multipler': 2, 'save_logging_iter_multipler': 1, 'save_s3': False, '_target_': <class 'cosmos_framework.callbacks.wandb_log.WandbCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback param_count: {'save_s3': False, '_target_': <class 'cosmos_framework.callbacks.param_count.ParamCount'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback wandb_val: {'save_s3': False, '_target_': <class 'cosmos_framework.callbacks.wandb_log_eval.WandbCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback moe_stability: {'every_n': 250, '_target_': <class 'cosmos_framework.callbacks.moe_stability_callback.MoEStabilityCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback moe_specialization: {'every_n': 250, '_target_': <class 'cosmos_framework.callbacks.moe_specialization_callback.MoESpecializationCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback expert_heatmap: {'every_n': 1000, '_target_': <class 'cosmos_framework.callbacks.expert_heatmap.ExpertHeatmap'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback load_pretrained: {'config': None, 'trainer': None, '_target_': <class 'cosmos_framework.callbacks.load_pretrained.LoadPretrained'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback compile_tokenizer: {'enabled': False, 'compile_after_iterations': 3, 'warmup_resolutions': None, 'backend': 'inductor', 'mode': 'reduce-overhead', 'fullgraph': False, 'dynamic': False, '_target_': <class 'cosmos_framework.callbacks.compile_tokenizer.CompileTokenizer'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback norm_monitor: {'every_n': 5000, 'step_size': 1, 'layer_norm_only': False, 'model_key': None, 'log_stat_wandb': True, 'save_s3': False, 'track_activations': True, '_target_': <class 'cosmos_framework.callbacks.norm_monitor.NormMonitor'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback sigma_loss_analysis: {'every_n': 5000, 'every_n_viz': 5000, 'save_s3': False, '_target_': <class 'cosmos_framework.callbacks.sigma_loss_analysis.SigmaLossAnalysis'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback sequence_packing_padding: {'every_n': 1, '_target_': <class 'cosmos_framework.callbacks.sequence_packing_padding.SequencePackingPadding'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback sampled_media: {'enabled': False, 'output_uri': '/home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/sampled_media.lance', 'creds_path': None, 'flush_every_n_batches': 100, '_target_': <class 'cosmos_framework.callbacks.sampled_media_recorder.SampledMediaRecorder'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback mfu: {'backwardpass_ratio': 2.0, 'hit_thres': 5, 'include_vae_encoder': True, 'include_padding': True, 'grad_accum_iter': 1, 'every_n': 1, '_target_': <class 'cosmos_framework.callbacks.mfu.MFUCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback ofu: {'hit_thres': 5, 'every_n': 1, '_target_': <class 'cosmos_framework.callbacks.ofu.OFUCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback skip_nan_step: {'max_consecutive_nan': 100, '_target_': <class 'cosmos_framework.callbacks.skip_nan_step.SkipNaNStep'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback grad_clip: {'clip_norm': 1.0, 'force_finite': True, 'track_per_modality': True, '_target_': <class 'cosmos_framework.callbacks.grad_clip.GradClip'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback low_precision: {'update_iter': 1, 'config': None, 'trainer': None, '_target_': <class 'cosmos_framework.utils.callback.LowPrecisionCallback'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback heart_beat: {'step_size': 1, 'update_interval_in_minute': 20, 'save_s3': False, 'every_n': 200, '_target_': <class 'cosmos_framework.callbacks.heart_beat.HeartBeat'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback device_monitor: {'every_n': 200, 'step_size': 1, 'save_s3': False, 'upload_every_n_mul': 5, 'log_memory_detail': True, '_target_': <class 'cosmos_framework.callbacks.device_monitor.DeviceMonitor'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:70:__init__] Instantiating callback termination_signal_checkpoint: {'min_save_fraction': 0.3333333333333333, '_target_': <class 'cosmos_framework.callbacks.termination_signal_checkpoint.TerminationSignalCheckpoint'>}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:66:__init__] Callback dataloader_speed is missing the '_target_' field. 
+ SKip {'every_n': 100, 'save_s3': False, 'step_size': 1}
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/callback.py:66:__init__] Callback training_stats is missing the '_target_' field. 
+ SKip {'log_freq': 100}
+[09-16 13:00:24|WARNING|cosmos_framework/utils/launch.py:86:log_reproducible_setup] S3 credentials not found. Skipping easy_io S3 setup.
+[09-16 13:00:24|WARNING|cosmos_framework/utils/launch.py:88:log_reproducible_setup] Job path: cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu
+[09-16 13:00:24|CRITICAL|cosmos_framework/utils/launch.py:93:log_reproducible_setup] Job local path: /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu
+[09-16 13:00:24|INFO|cosmos_framework/model/generator/omni_mot_model.py:90:__init__] OmniMoTModel: config {'tokenizer': {'bucket_name': '', 'object_store_credential_path_pretrained': '', 'vae_path': '/home/<brev-user>/cosmos-framework/examples/checkpoints/wan22_vae/Wan2.2_VAE.pth', 'chunk_duration': 93, 'keep_decoder_cache': False, 'use_streaming_encode': False, 'encode_chunk_frames': {'256': 68, '480': 24, '720': 8, '768': 8}, 'encode_exact_durations': None, 'spatial_compression_factor': 16, 'temporal_compression_factor': 4, 'temporal_window': None, 'encode_bucket_multiple': None, 'causal': True, '_target_': <class 'cosmos_framework.model.generator.tokenizers.wan2pt2_vae_4x16x16.Wan2pt2VAEInterface'>}, 'load_vision_tokenizer': True, 'net': None, 'ema': {'enabled': False, 'rate': 0.1, 'iteration_shift': 0}, 'parallelism': {'data_parallel_shard_degree': 2, 'data_parallel_replicate_degree': 1, 'context_parallel_shard_degree': 1, 'attention_io_layout': 'sequence_sharded', 'cfg_parallel_shard_degree': 1, 'enable_inference_mode': False, 'fsdp_master_dtype': 'float32'}, 'compile': {'enabled': True, 'compiled_region': 'language', 'compile_dynamic': True, 'use_cuda_graphs': False, 'ar_post_saturation_mode': 'default', 'max_autotune_pointwise': False, 'coordinate_descent_tuning': False}, 'activation_checkpointing': {'mode': 'selective', 'save_ops_regex': ['fmha'], 'preserve_rng_state': True, 'determinism_check': 'default'}, 'precision': 'bfloat16', 'lora_enabled': True, 'lora_rank': 64, 'lora_alpha': 128, 'lora_target_modules': 'q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen', 'lora_extra_trainable': 'action2llm,llm2action,action_modality_embed', 'rectified_flow_training_config': {'shift': {'256': 3, '480': 5, '720': 10}, 'use_dynamic_shift': False, 'train_time_image_distribution': 'logitnormal', 'train_time_video_distribution': 'waver', 'train_time_action_distribution': 'logitnormal', 'train_time_sound_distribution': 'logitnormal', 'train_time_weight': 'uniform', 'loss_scale': 10.0, 'image_loss_scale': None, 'sound_loss_scale': 2.0, 'use_discrete_rf': False, 'action_loss_weight': 10.0, 'independent_action_schedule': False, 'shift_action': None, 'independent_sound_schedule': False, 'shift_sound': None, 'normalize_loss_by_active': False}, 'rectified_flow_inference_config': {'scheduler_type': 'unipc', 'num_train_timesteps': 1000, 'shift': 1, 'use_dynamic_shifting': False}, 'fixed_step_sampler_config': None, 'vlm_config': {'model_name': 'nvidia/Cosmos3-Edge-Reasoner', 'safetensors_path': '', 'pretrained_weights': {'enabled': False, 'backbone_path': 's3://bucket/cosmos3/pretrained/huggingface/nvidia/Cosmos3-Edge-Reasoner-590c1c0/', 'credentials_path': '', 'enable_gcs_patch_in_boto3': True, 'checkpoint_format': None}, 'model_instance': {'config': {'base_config': {'json_file': 'cosmos_framework/model/generator/reasoner/nemotron_3_dense_vl/configs/Nemotron-2B-Dense-VL.json', '_target_': <bound method _MoTConfigBase.from_json_file of <class 'cosmos_framework.model.generator.mot.unified_mot.Nemotron3DenseVLMoTConfig'>>}, 'freeze_und': False, 'layer_module': 'MoTDecoderLayer', 'qk_norm_for_text': False, 'use_und_k_norm_for_gen': True, 'include_visual': None, 'tie_word_embeddings': True, '_target_': <function create_vlm_config at 0x708651fd1260>}, '_target_': <class 'cosmos_framework.model.generator.mot.unified_mot.Nemotron3DenseVLTextForCausalLM'>}, 'tokenizer': {'repository': 'nvidia/Cosmos3-Edge', 'revision': 'main', 'subdir': '', '_target_': <function build_processor_lazy at 0x7085f89249a0>}, 'layer_module': None, 'qk_norm': False, 'tie_word_embeddings': False, 'use_system_prompt': False}, 'diffusion_expert_config': {'timestep_range': 1.0, 'load_weights_from_pretrained': True, 'patch_spatial': 2, 'max_vae_latent_side_after_patchify': 20, 'enable_fps_modulation': True, 'base_fps': 24, 'sound_base_temporal_compression_factor': None, 'vision_temporal_position_mode': 'latent_index', 'unified_3d_mrope_reset_spatial_ids': True, 'unified_3d_mrope_temporal_modality_margin': 15000}, 'input_video_key': 'video', 'input_image_key': 'images', 'input_caption_key': 'ai_caption', 'state_ch': 48, 'state_t': 300, 'latent_downsample_factor': 16, 'resolution': '480', 'max_num_tokens_after_packing': 45056, 'joint_attn_implementation': 'two_way', 'natten_parameter_list': None, 'video_temporal_causal': False, 'causal_training_strategy': 'none', 'lbl': {'method': 'local', 'coeff_und': None, 'coeff_gen': None}, 'vision_gen': True, 'action_gen': True, 'max_action_dim': 64, 'num_embodiment_domains': 32, 'sound_gen': False, 'sound_tokenizer': None, 'sound_dim': None, 'sound_latent_fps': 25, 'enable_input_bias': True, 'log_enc_time_every_n': 100, 'exclude_reasoner_weights_from_checkpoint': False}
+[09-16 13:00:24|WARNING|cosmos_framework/model/generator/omni_mot_model.py:116:set_precision] OmniMoTModel: precision torch.bfloat16
+[09-16 13:00:24|INFO|cosmos_framework/utils/checkpoint_db.py:160:_hf_download] uvx --with click --with 'tqdm<4.70' hf@1.16.4 download --format=json nvidia/Cosmos3-Edge --repo-type model --revision main --include '*'
+Installed 23 packages in 8ms
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+This processor does not use the `size` parameter. It will be ignored.
+[09-16 13:00:51|INFO|cosmos_framework/data/generator/processors/base.py:131:__init__] Successfully loaded processor from local cache
+This processor does not use the `size` parameter. It will be ignored.
+[09-16 13:00:53|INFO|cosmos_framework/model/generator/tokenizers/wan2pt2_vae_4x16x16.py:1032:_video_vae] loading /home/<brev-user>/cosmos-framework/examples/checkpoints/wan22_vae/Wan2.2_VAE.pth
+[09-16 13:00:53|INFO|cosmos_framework/utils/distributed.py:407:sync_model_states] Synchronizing model states from rank 0 to all ranks in process group [0, 1].
+[09-16 13:00:53|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on OmniMoTModel: set_up_tokenizers: 28.57 s
+[09-16 13:00:53|INFO|cosmos_framework/utils/generator/parallelism.py:117:_validate] dp_replicate is set to -1, will be automatically determined based on world_size 2 // dp_shard 2.
+[09-16 13:00:53|INFO|cosmos_framework/utils/generator/parallelism.py:122:_validate] dp_replicate is set to 1.
+[09-16 13:00:53|INFO|cosmos_framework/utils/generator/parallelism.py:147:_build_mesh] Building 2-D device mesh with ['dp_replicate', 'dp_shard'], [1, 2]
+`torch_dtype` is deprecated! Use `dtype` instead!
+`torch_dtype` is deprecated! Use `dtype` instead!
+[09-16 13:00:53|INFO|cosmos_framework/utils/generator/lora.py:141:inject_lora_pre_fsdp] Injecting LoRA on meta device: rank=64, alpha=128, targets=['q_proj_moe_gen', 'k_proj_moe_gen', 'v_proj_moe_gen', 'o_proj_moe_gen']
+[09-16 13:00:53|INFO|cosmos_framework/utils/generator/lora.py:182:inject_lora_pre_fsdp] LoRA injection successful: 112 modules wrapped, 25,690,112 trainable LoRA params, 8,458,240 extra trainable params (3 key(s) matched), 3,361,198,784 frozen base params (1.006% trainable)
+[rank1]:W0916 13:00:53.837000 24005 .venv/lib/python3.13/site-packages/torch/distributed/tensor/_random.py:215] DTensor is synchronizing RNG states of every rank with the state from rank 0. This behavior is deprecated. Please call `torch.manual_seed()` on every rank that participates in SPMD DTensor Operations with the same seed. If using Pipeline Parallelism, each pipeling state would use a different seed, but all ranks belonging to one pipeline stage would use the same seed.
+[09-16 13:00:54|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on meta to cuda and broadcast model states: 0.28 s
+[09-16 13:00:54|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on Creating PyTorch model and ema if enabled: 0.48 s
+[09-16 13:00:54|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on OmniMoTModel: set_up_model: 0.48 s
+[09-16 13:00:54|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on init_model: 29.05 s
+[09-16 13:00:54|INFO|cosmos_framework/data/generator/joint_dataloader.py:947:__init__] [RANK 0] RankPartitionedDataLoader: world_size: 2 and rank: 0
+[09-16 13:00:54|INFO|cosmos_framework/data/generator/joint_dataloader.py:1002:__init__] [RANK 0] RankPartitionedDataLoader allocation (2 GPUs):
+  so101 (ratio 1): ranks 0-1 (2 GPUs) | expected 100.00%, actual 100.00%
+[09-16 13:00:54|INFO|cosmos_framework/utils/checkpoint_db.py:160:_hf_download] uvx --with click --with 'tqdm<4.70' hf@1.16.4 download --format=json nvidia/Cosmos3-Edge --repo-type model --revision main --include '*'
+[09-16 13:00:54|INFO|cosmos_framework/data/generator/joint_dataloader.py:947:__init__] [RANK 1] RankPartitionedDataLoader: world_size: 2 and rank: 1
+[09-16 13:00:54|INFO|cosmos_framework/data/generator/joint_dataloader.py:1002:__init__] [RANK 1] RankPartitionedDataLoader allocation (2 GPUs):
+  so101 (ratio 1): ranks 0-1 (2 GPUs) | expected 100.00%, actual 100.00%
+[09-16 13:00:54|INFO|cosmos_framework/data/generator/processors/base.py:131:__init__] Successfully loaded processor from local cache
+[09-16 13:01:00|INFO|cosmos_framework/data/generator/action/datasets/so101_lerobot_dataset.py:137:__init__] SO-101: keep_tasks kept 972 episodes across 6 instructions
+[09-16 13:01:00|INFO|cosmos_framework/data/generator/action/datasets/so101_lerobot_dataset.py:161:__init__] SO-101: max_episodes_per_task=45 kept 142 episodes: {'Place each object in the plastic bin': 45, 'Place the altoids container in the plast': 18, 'Place the cardboard box in the plastic b': 18, 'Place the flower pot in the plastic bin': 18, 'Place the cooking spoon in the plastic b': 18, 'Place the green shoes in the plastic bin': 25}
+[09-16 13:01:00|INFO|cosmos_framework/data/generator/action/datasets/so101_lerobot_dataset.py:177:__init__] Loaded SO-101 dataset root=/home/<brev-user>/cosmos-framework/examples/data/so101_bench_sim_6 split='train' fps=30.0 kept_episodes=128/142 valid_indices=55385
+[09-16 13:01:00|INFO|cosmos_framework/data/generator/joint_dataloader.py:376:__init__] JointDataLoader: 1 streams
+  action_so101: ratio=1 (100.0%)
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/action/action_normalization.py:20:load_action_stats] Loading action normalization stats from /home/<brev-user>/cosmos-framework/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/joint_dataloader.py:480:_prewarm_dataloaders] [RANK 0] Pre-warm: dataloader 'action_so101' ready — 1 samples buffered in 1.3s
+[09-16 13:01:01|INFO|cosmos_framework/data/generator/joint_dataloader.py:487:_prewarm_dataloaders] Pre-warm: waiting at barrier for all ranks …
+/home/<brev-user>/cosmos-framework/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+[09-16 13:01:02|INFO|cosmos_framework/data/generator/joint_dataloader.py:480:_prewarm_dataloaders] [RANK 1] Pre-warm: dataloader 'action_so101' ready — 1 samples buffered in 1.3s
+[09-16 13:01:02|INFO|cosmos_framework/data/generator/joint_dataloader.py:489:_prewarm_dataloaders] Pre-warm: all ranks ready
+[09-16 13:01:02|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on init_data_loader: 8.02 s
+[09-16 13:01:02|INFO|cosmos_framework/utils/generator/optimizer.py:206:_build_params_with_metadata] Total tensors: 773, trainable tensors: 229, selected tensors: 229
+[09-16 13:01:02|INFO|cosmos_framework/utils/generator/optimizer.py:392:__init__] Building optimizer for mesh 'dp_replicate-dp_shard'
+[09-16 13:01:02|INFO|cosmos_framework/utils/generator/optimizer.py:248:_build_optimizer_internal] Param group (lr=0.0001, WD=True): 229 tensors, 34,148,352 elements
+[09-16 13:01:02|INFO|cosmos_framework/utils/generator/fused_adam.py:81:__init__] FusedAdam master_weights: True capturable: True
+[09-16 13:01:02|INFO|cosmos_framework/utils/generator/optimizer.py:400:__init__] Created 1 optimizers
+[09-16 13:01:02|INFO|cosmos_framework/utils/generator/optimizer.py:579:__init__] Created 1 schedulers
+[09-16 13:01:02|CRITICAL|cosmos_framework/checkpoint/dcp.py:797:load] Resuming ckpt /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500 with keys: ['dataloader', 'model', 'optim', 'scheduler', 'trainer']
+[09-16 13:01:02|CRITICAL|cosmos_framework/checkpoint/dcp.py:809:load] Start loading checkpoint from /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/dataloader
+[09-16 13:01:02|INFO|cosmos_framework/checkpoint/dcp.py:926:load] [RANK 0] Checkpoint /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/dataloader does not exist, skip loading dataloader.
+[09-16 13:01:02|INFO|cosmos_framework/checkpoint/dcp.py:926:load] [RANK 1] Checkpoint /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/dataloader does not exist, skip loading dataloader.
+[09-16 13:01:02|CRITICAL|cosmos_framework/checkpoint/dcp.py:809:load] Start loading checkpoint from /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/model
+[09-16 13:01:02|INFO|cosmos_framework/checkpoint/dcp.py:835:load] - Loading the model...
+/home/<brev-user>/cosmos-framework/.venv/lib/python3.13/site-packages/torch/distributed/checkpoint/utils.py:483: UserWarning: torch.distributed is disabled, unavailable or uninitialized, assuming the intent is to load in a single process.
+  return func(*args, **kwargs)
+/home/<brev-user>/cosmos-framework/.venv/lib/python3.13/site-packages/torch/distributed/checkpoint/utils.py:483: UserWarning: torch.distributed is disabled, unavailable or uninitialized, assuming the intent is to load in a single process.
+  return func(*args, **kwargs)
+[09-16 13:01:02|INFO|cosmos_framework/checkpoint/dcp.py:408:_drop_non_reader_items] [RANK 1] [DCP-LOAD-DEDUP] kept_read_items=773 dropped_read_items=0
+[09-16 13:01:02|INFO|cosmos_framework/checkpoint/dcp.py:408:_drop_non_reader_items] [RANK 0] [DCP-LOAD-DEDUP] kept_read_items=773 dropped_read_items=0
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:602:_broadcast_state_dict] [RANK 0] [DCP-LOAD-TIMING] broadcast: tensors=0.0s, objects=0.0s, rebuild=0.0s
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:602:_broadcast_state_dict] [RANK 1] [DCP-LOAD-TIMING] broadcast: tensors=0.0s, objects=0.2s, rebuild=0.0s
+[09-16 13:01:04|CRITICAL|cosmos_framework/checkpoint/dcp.py:809:load] Start loading checkpoint from /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/optim
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:871:load] - Loading the optimizer...
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:408:_drop_non_reader_items] [RANK 0] [DCP-LOAD-DEDUP] kept_read_items=2061 dropped_read_items=0
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:408:_drop_non_reader_items] [RANK 1] [DCP-LOAD-DEDUP] kept_read_items=458 dropped_read_items=1603
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:602:_broadcast_state_dict] [RANK 0] [DCP-LOAD-TIMING] broadcast: tensors=0.0s, objects=0.0s, rebuild=0.0s
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:602:_broadcast_state_dict] [RANK 1] [DCP-LOAD-TIMING] broadcast: tensors=0.0s, objects=0.0s, rebuild=0.0s
+[09-16 13:01:04|CRITICAL|cosmos_framework/checkpoint/dcp.py:809:load] Start loading checkpoint from /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/scheduler
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:886:load] - Loading the scheduler...
+[09-16 13:01:04|CRITICAL|cosmos_framework/checkpoint/dcp.py:809:load] Start loading checkpoint from /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500/trainer
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:897:load] - Loading the trainer...
+[09-16 13:01:04|INFO|cosmos_framework/checkpoint/dcp.py:954:load] Loaded checkpoint from /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005500 in iteration 5500
+[09-16 13:01:04|INFO|cosmos_framework/utils/timer.py:138:_log] Time spent on checkpoint loading: 2.77 s
+[09-16 13:01:04|CRITICAL|cosmos_framework/trainer/__init__.py:222:train] Distributed parallelism mode: fsdp
+[09-16 13:01:04|INFO|cosmos_framework/trainer/__init__.py:230:train] Starting training...
+[09-16 13:01:04|INFO|cosmos_framework/utils/wandb_util.py:55:init_wandb] Generating new wandb ID: cxxkk5md
+Config is saved using omegaconf at /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/config.yaml.
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/param_count.py:31:on_train_start] [RANK 0] Total number of parameters on current rank: 34148352
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/norm_monitor.py:72:on_train_start] NormMonitor callback: local_dir: /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/norm_monitor
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/norm_monitor.py:153:_register_activation_hooks] NormMonitor: Registered activation hooks on 28 transformer blocks
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/ofu.py:182:on_train_start] OFUCallback: launched nvidia-smi dmon --gpm-metrics 5
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/device_monitor.py:102:on_train_start] DeviceMonitor callback: local_dir: /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/DeviceMonitor
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/termination_signal_checkpoint.py:186:_install_termination_signal_handlers] [TerminationSignalCheckpoint] Installed SIGTERM handler.
+[09-16 13:01:05|INFO|cosmos_framework/callbacks/ofu.py:116:_parse_header] OFUCallback: found mmaact at column 12, pclk at column 11
+[rank0]:W0916 13:01:18.419000 24004 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] 
+[rank0]:W0916 13:01:18.419000 24004 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] Detected that context_fn is passed to torch.utils.checkpoint under torch.compile.
+[rank0]:W0916 13:01:18.419000 24004 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] Please make sure the checkpointed region does not contain in-place ops (e.g. torch.relu_).
+[rank0]:W0916 13:01:18.419000 24004 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] 
+[rank1]:W0916 13:01:19.222000 24005 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] 
+[rank1]:W0916 13:01:19.222000 24005 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] Detected that context_fn is passed to torch.utils.checkpoint under torch.compile.
+[rank1]:W0916 13:01:19.222000 24005 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] Please make sure the checkpointed region does not contain in-place ops (e.g. torch.relu_).
+[rank1]:W0916 13:01:19.222000 24005 .venv/lib/python3.13/site-packages/torch/_logging/_internal.py:1204] [0/0] 
+[09-16 13:01:53|INFO|cosmos_framework/callbacks/grad_clip.py:325:on_before_optimizer_step] [RANK 0] clip_grad_norm/video/global: 0.68359 (iteration 5500)
+[09-16 13:01:53|INFO|cosmos_framework/callbacks/grad_clip.py:325:on_before_optimizer_step] [RANK 1] clip_grad_norm/video/global: 0.68359 (iteration 5500)
+[09-16 13:01:53|INFO|cosmos_framework/callbacks/iter_speed.py:45:on_training_step_end] [RANK 0] Iteration 5501: Hit counter: 1/50 | Loss: 1.3640 | Time: 88.67s
+[09-16 13:01:53|INFO|cosmos_framework/callbacks/iter_speed.py:45:on_training_step_end] [RANK 1] Iteration 5501: Hit counter: 1/50 | Loss: 1.2185 | Time: 88.67s
+[09-16 13:02:03|INFO|cosmos_framework/callbacks/grad_clip.py:325:on_before_optimizer_step] [RANK 1] clip_grad_norm/video/global: 0.62500 (iteration 5501)
+[09-16 13:02:03|INFO|cosmos_framework/callbacks/grad_clip.py:325:on_before_optimizer_step] [RANK 0] clip_grad_norm/video/global: 0.62500 (iteration 5501)
+[09-16 13:02:03|INFO|cosmos_framework/callbacks/iter_speed.py:45:on_training_step_end] [RANK 1] Iteration 5502: Hit counter: 2/50 | Loss: 1.1208 | Time: 9.49s
+[09-16 13:02:03|INFO|cosmos_framework/callbacks/iter_speed.py:45:on_training_step_end] [RANK 0] Iteration 5502: Hit counter: 2/50 | Loss: 1.2706 | Time: 9.49s
+[09-16 13:02:12|INFO|cosmos_framework/callbacks/grad_clip.py:325:on_before_optimizer_step] [RANK 1] clip_grad_norm/video/global: 0.68750 (iteration 5502)
+[09-16 13:02:12|INFO|cosmos_framework/callbacks/grad_clip.py:325:on_before_optimizer_step] [RANK 0] clip_grad_norm/video/global: 0.68750 (iteration 5502)
+[09-16 13:02:12|INFO|cosmos_framework/callbacks/iter_speed.py:45:on_training_step_end] [RANK 1] Iteration 5503: Hit counter: 3/50 | Loss: 1.1680 | Time: 9.51s
+[09-16 13:02:12|INFO|cosmos_framework/callbacks/iter_speed.py:45:on_training_step_end] [RANK 0] Iteration 5503: Hit counter: 3/50 | Loss: 1.3356 | Time: 9.51s
+[09-16 13:02:12|SUCCESS|cosmos_framework/trainer/__init__.py:326:train] Done with training.
+[09-16 13:02:20|INFO|cosmos_framework/checkpoint/dcp.py:1081:save_state_dict_worker] Saving last checkpoint file iter_000005503
+[09-16 13:02:20|INFO|cosmos_framework/checkpoint/dcp.py:1084:save_state_dict_worker] Saved checkpoint to /home/<brev-user>/smoke_out/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu/checkpoints/iter_000005503
+[09-16 13:02:20|INFO|cosmos_framework/checkpoint/dcp.py:1145:save] Checkpoint save completed: Time taken: 7.69 seconds
+/home/<brev-user>/cosmos-framework/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+>>> 13:02:26 Done (exit 0)

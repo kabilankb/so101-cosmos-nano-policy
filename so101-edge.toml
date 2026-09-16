@@ -1,0 +1,67 @@
+# so101-cosmos settings for the Cosmos3-EDGE SO-101 post-training run.
+#
+# Sibling of the default (Nano) configuration in so101_cosmos/config.py. Same
+# robot, same dataset, same serving contract — the differences are the model
+# tier, the run directory, and the LoRA scale.
+#
+#   so101 --config so101-edge.toml doctor
+#   so101 --config so101-edge.toml status
+#   so101 --config so101-edge.toml web --port 8802
+#
+# The Nano instance on :8801 keeps its own defaults and is unaffected.
+
+[so101]
+
+# -- checkouts and interpreters ---------------------------------------------
+# framework, bench and kit_python default to ~/cosmos-framework, ~/IsaacLab/so101_bench
+# and ~/IsaacLab/_isaac_sim/python.sh; set them here only if your checkouts live elsewhere.
+
+# -- the training run, relative to `framework` -------------------------------
+run_dir = "outputs/train/cosmos3_action/action_sft_sim/action_policy_so101_edge_focus5_multi_1gpu"
+# Separate job dir so Edge merges/exports/evals do not interleave with the Nano
+# run's history in the jobs list.
+job_dir = "outputs/so101_cosmos_jobs_edge"
+dataset = "examples/data/so101_bench_sim_6"
+stats   = "cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json"
+
+# -- serving contract --------------------------------------------------------
+# Do not change these without retraining. Each one fails silently: the server
+# keeps answering, with wrong actions.
+experiment            = "action_policy_so101_edge_focus5_multi"
+action_dim            = 6      # 5 arm joints + gripper
+arm_joint_dim         = 5
+action_space          = "joint_pos"
+conditioning_fps      = 30     # matches the dataset; wrong fps shifts time conditioning
+action_normalization  = "minmax"
+
+# The Edge run trains at rank 64 / alpha 128 (see [model] in
+# examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml).
+# Merging at the Nano recipe's 16/32 produces a valid-looking policy that simply
+# performs badly — nothing raises, so this is the most expensive value here to
+# get wrong.
+lora_alpha            = 128
+lora_rank             = 64
+
+# -- training bookkeeping ----------------------------------------------------
+# The Edge run's log lives under outputs/edge_setup/, not the Nano resume
+# script's outputs/train_resume_*.log. Without this the control page reports the
+# Nano run's iteration and loss while claiming to describe this one.
+train_log_glob  = "outputs/edge_setup/train_edge*.log"
+max_iter        = 7000
+save_iter       = 500
+global_batch    = 32
+# 55,385 valid windows / global batch 32. Measured by instantiating the loader
+# (128 train episodes after val_ratio 0.10), not estimated from frame counts.
+iters_per_epoch = 1731
+
+# -- evaluation --------------------------------------------------------------
+task           = "So101Bench-Bin-v0"
+episodes_jsonl = "tasks/focus5.jsonl"
+layouts_glob   = "tasks/layouts/focus5_layouts_*.jsonl"
+action_horizon = 32
+
+# -- ports -------------------------------------------------------------------
+# 8000 is shared with the Nano instance: only one policy server can hold the
+# port (and the GPU) at a time, which is the correct constraint.
+policy_port = 8000
+web_port    = 8802
