@@ -27,7 +27,7 @@ run that finished it, the Hugging Face release, and a benchmark set matching its
 | --- | ---: | --- |
 | 1500 | 0.87 | 0 / 50 |
 | 2500 | 1.44 | 0 / 100 |
-| 6500 | 3.76 | 1 / 44 so far (episode 18, green shoes, 14.73 s), still running |
+| 6500 | 3.76 | **2 / 51 (3.9%)** so far, still running: green shoes 1 / 20 (episode 18, 14.73 s), cardboard box 0 / 20, altoids container 1 / 11 (episode 50, 12.43 s, the first altoids success by any model) |
 | 7000 | 4.04 | not evaluated |
 
 ## Layout

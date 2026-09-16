@@ -9,7 +9,7 @@ pipeline that spans two Python environments which cannot import each other.
 | Model | Hugging Face | Best result so far |
 | --- | --- | --- |
 | Cosmos3-Nano | [kabilanKB/cosmos_nano_policy_so101](https://huggingface.co/kabilanKB/cosmos_nano_policy_so101) (iteration 3750) | 17 / 542 single-object (3.1%) |
-| Cosmos3-Edge | [kabilanKB/cosmos_edge_policy_so101](https://huggingface.co/kabilanKB/cosmos_edge_policy_so101) (iterations 6000, 6500, 7000) | evaluation in progress, see [Cosmos3-Edge](#cosmos3-edge) |
+| Cosmos3-Edge | [kabilanKB/cosmos_edge_policy_so101](https://huggingface.co/kabilanKB/cosmos_edge_policy_so101) (iterations 6000, 6500, 7000) | iteration 6500: **2 / 51 (3.9%)** so far, evaluation in progress, see [Cosmos3-Edge](#cosmos3-edge) |
 
 ```
 train ──► merge ──► export ──► serve ──────► warmup ──► evaluate
@@ -154,8 +154,28 @@ action heads start from a trained manipulation mapping instead of random init.
 | ---: | ---: | --- |
 | 1500 | 0.87 | 0 / 50 |
 | 2500 | 1.44 | 0 / 100 |
-| 6500 | 3.76 | in progress: green shoes 1 / 20 (episode 18, 14.73 s), cardboard box 0 / 20 |
+| **6500** | **3.76** | **2 / 51 (3.9%)**, in progress (51 of 100 episodes) |
 | 7000 | 4.04 | not evaluated |
+
+Checkpoint 6500 by object, as of 2026-09-16 23:15 IST (GUI run on the workstation):
+
+| Episodes | Object | Result | Nano 3750 on the same object |
+| --- | --- | ---: | ---: |
+| 1–20 | green shoes | **1 / 20** | 3 / 162 |
+| 21–40 | cardboard box | 0 / 20 | 1 / 110 |
+| 41–51 | altoids container | **1 / 11** | 0 / 113 |
+| 52–60 | altoids container | pending | |
+| 61–80 | flower pot | pending | 6 / 84 |
+| 81–100 | cooking spoon | pending | 7 / 73 |
+
+- **Successes:**
+  - episode 18, green shoes, placed in **14.73 s**;
+  - episode 50, altoids container, placed in **12.43 s**.
+- **First altoids success by any model:** Nano 3750 never succeeded on this object in 113 attempts.
+- **Failures:** all 49 are time-outs with the target never lifted, the same passive failure
+  mode as Nano.
+- **The comparison is not settled yet.** Nano 3750 scored 3.1% overall, but its successes cluster
+  on the flower pot and cooking spoon, which this run has not reached.
 
 Everything for this run is in **[edge/](edge/README.md)**:
 - the training recipe and cosmos-framework tools;
