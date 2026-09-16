@@ -84,6 +84,47 @@ epoch from 36,799 iterations to 899 and makes convergence possible on a single G
 dataset and base checkpoint, the config and why each setting is what it is, launching,
 auto-resume after a power cut, and how to pick a checkpoint — which is not by lowest loss.
 
+## Benchmark
+
+Success rate of the first post-training run (`action_policy_so101_nano_focus5`, 4000
+iterations = 4.45 epochs) in the `so101_bench` Isaac Lab twin (`So101Bench-Bin-v0`).
+Single-object episodes get 25 s, 4-object episodes 90 s. Each cell is successes / episodes.
+
+| Checkpoint | Epochs | 1-object | 4-object |
+| ---: | ---: | ---: | ---: |
+| 250 | 0.3 | 0 / 5 | 0 / 19 |
+| 500 | 0.6 | 0 / 6 | – |
+| 750 | 0.8 | 0 / 6 | 0 / 4 |
+| 1000 | 1.1 | 0 / 1 | 0 / 2 |
+| 1250 | 1.4 | 0 / 14 | – |
+| 1500 | 1.7 | 0 / 32 | – |
+| 1750 | 1.9 | 0 / 6 | – |
+| 2000 | 2.2 | 0 / 20 | – |
+| 3000 | 3.3 | 0 / 20 | – |
+| 3500 | 3.9 | 0 / 20 | – |
+| **3750** | **4.2** | **13 / 472 (2.8%)** | **0 / 48** |
+| 4000 | 4.5 | 0 / 20 | – |
+
+**Checkpoint 3750 is the only one that has ever succeeded.**
+
+- **Single-object: 2.8%** (13 / 472; 95% confidence interval 1.6–4.7%). Aug 20–23 scored
+  11 / 295, Sep 9 (action horizon 8) 2 / 100, and Sep 11 (action horizon 16) 0 / 63
+  before the eval process crashed.
+- **4-object scenes: 0%** (0 / 48). The training set has no cluttered scenes for these
+  instructions.
+- **By object:** cooking spoon 7 / 73 (9.6%), flower pot 4 / 74 (5.4%), green shoes
+  2 / 142 (1.4%), cardboard box 0 / 90, altoids container 0 / 93. The Aug logs do not name
+  the object, so those episodes are assigned by position in the task file and the counts
+  are approximate.
+- **Failure mode:** 441 time-outs and 17 displaced bins. All 305 failures that log target
+  lift report 0.00 in against a 0.50 in threshold: when the policy fails, the object never
+  leaves the table.
+
+Not counted: the Sep 13 runs on hand-picked subsets (`focus5_wins` 0 / 3, `focus5_farside`
+0 / 37). The Aug logs do not record the action horizon, so compare runs only at the same
+horizon. Figures are aggregated from `outputs/monitor_jobs/eval*.log` and
+`outputs/so101_cosmos_jobs/evaluate*.log` in `cosmos-framework`, as of 2026-09-13.
+
 ## Package structure
 
 ```
@@ -179,7 +220,8 @@ reaching only `_build_model_parallelism`, which ignores the value.
   `outputs/monitor_jobs`, where `tools/train_monitor.py` recorded earlier runs, so nothing
   from before the package existed is lost. Legacy records are read-only.
 - The newest checkpoint is not the best one. On the reference run, iteration 4000 has the
-  lowest loss and scores 0/20, while 3750 scores 11/262. Pick from `so101 checkpoints`.
+  lowest loss and scores 0/20, while 3750 scores 13/472 (see [Benchmark](#benchmark)).
+  Pick from `so101 checkpoints`.
 
 ## Tests
 
