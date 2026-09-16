@@ -1,8 +1,15 @@
 # so101-cosmos
 
-Post-training, serving and digital-twin evaluation for the **SO-101** Cosmos3-Nano action
-policy: one CLI and one control page over a pipeline that spans two Python environments
-which cannot import each other.
+Post-training, serving and digital-twin evaluation for the **SO-101** Cosmos3 action
+policies (**Cosmos3-Nano** and **Cosmos3-Edge**): one CLI and one control page over a
+pipeline that spans two Python environments which cannot import each other.
+
+**Released checkpoints**
+
+| Model | Hugging Face | Best result so far |
+| --- | --- | --- |
+| Cosmos3-Nano | [kabilanKB/cosmos_nano_policy_so101](https://huggingface.co/kabilanKB/cosmos_nano_policy_so101) (iteration 3750) | 17 / 542 single-object (3.1%) |
+| Cosmos3-Edge | [kabilanKB/cosmos_edge_policy_so101](https://huggingface.co/kabilanKB/cosmos_edge_policy_so101) (iterations 6000, 6500, 7000) | evaluation in progress, see [Cosmos3-Edge](#cosmos3-edge) |
 
 ```
 train ──► merge ──► export ──► serve ──────► warmup ──► evaluate
@@ -102,28 +109,73 @@ Single-object episodes get 25 s, 4-object episodes 90 s. Each cell is successes 
 | 2000 | 2.2 | 0 / 20 | – |
 | 3000 | 3.3 | 0 / 20 | – |
 | 3500 | 3.9 | 0 / 20 | – |
-| **3750** | **4.2** | **13 / 472 (2.8%)** | **0 / 48** |
+| **3750** | **4.2** | **17 / 542 (3.1%)** | **0 / 48** |
 | 4000 | 4.5 | 0 / 20 | – |
 
 **Checkpoint 3750 is the only one that has ever succeeded.**
 
-- **Single-object: 2.8%** (13 / 472; 95% confidence interval 1.6–4.7%). Aug 20–23 scored
-  11 / 295, Sep 9 (action horizon 8) 2 / 100, and Sep 11 (action horizon 16) 0 / 63
-  before the eval process crashed.
-- **4-object scenes: 0%** (0 / 48). The training set has no cluttered scenes for these
-  instructions.
-- **By object:** cooking spoon 7 / 73 (9.6%), flower pot 4 / 74 (5.4%), green shoes
-  2 / 142 (1.4%), cardboard box 0 / 90, altoids container 0 / 93. The Aug logs do not name
-  the object, so those episodes are assigned by position in the task file and the counts
-  are approximate.
-- **Failure mode:** 441 time-outs and 17 displaced bins. All 305 failures that log target
-  lift report 0.00 in against a 0.50 in threshold: when the policy fails, the object never
-  leaves the table.
+- **Single-object: 3.1%** (17 / 542). Aug 20–23 scored 11 / 295; Sep 9 (action horizon 8)
+  2 / 100; Sep 11–12 (horizon 32) 4 / 70; Sep 11 (horizon 16) 0 / 63 before the eval process
+  crashed. Horizon 32 is the setting to use: on the same server and scenes it scored 4 / 70
+  where horizon 16 scored 0 / 63.
+- **Near vs far side:** every success had the object on the bin's side of the table. On runs
+  using the fixed layout file that side scores 13 / 252 (5.2%) and the far side 0 / 187.
+- **4-object scenes: 0%** (0 / 48).
+- **By object:** cooking spoon 7 / 73, flower pot 6 / 84, green shoes 3 / 162, cardboard box
+  1 / 110, altoids container 0 / 113. Episodes without an object name in older logs are
+  assigned by position in the task file, so these counts are approximate.
+- **Failure mode:** almost all failures are time-outs in which the target never leaves the
+  table (every failure that logs target lift reports 0.00 in against a 0.50 in threshold).
+- **Re-run on 2026-09-16:** 0 / 13 on `focus5.jsonl` (stopped) and 0 / 12 on the 12 scenes
+  that had ever succeeded (`focus5_wins`). Weights, server settings and code were unchanged;
+  the result fits a ≈ 5% chance per attempt rather than reliably solved scenes.
 
-Not counted: the Sep 13 runs on hand-picked subsets (`focus5_wins` 0 / 3, `focus5_farside`
-0 / 37). The Aug logs do not record the action horizon, so compare runs only at the same
-horizon. Figures are aggregated from `outputs/monitor_jobs/eval*.log` and
-`outputs/so101_cosmos_jobs/evaluate*.log` in `cosmos-framework`, as of 2026-09-13.
+Not counted: hand-picked subsets (`focus5_wins`, `focus5_farside` 0 / 37). Compare runs only at
+the same action horizon. Figures are aggregated from `outputs/monitor_jobs/eval*.log`,
+`outputs/so101_cosmos_jobs/evaluate*.log` and `outputs/so101_cosmos_jobs_edge/` in
+`cosmos-framework`, as of 2026-09-16.
+
+## Cosmos3-Edge
+
+A second policy, post-trained from `nvidia/Cosmos3-Edge-Policy-DROID`. The DROID action-head
+row (embodiment domain 8) is copied into SO-101's row (domain 22) before training, so the
+action heads start from a trained manipulation mapping instead of random init.
+
+| | |
+| --- | --- |
+| Data | 5 single-object bin instructions + "Place each object in the plastic bin" capped at 45 episodes: **128 train / 14 held out** |
+| Method | LoRA rank 64 / alpha 128 + action heads, lr 1e-4, global batch 32, 7,000 iterations (4.04 epochs) |
+| Iterations 0–5500 | 1× RTX PRO 6000, ~21 s / iteration |
+| Iterations 5500–7000 | resumed on NVIDIA Brev, 2× RTX PRO 6000, 9.48 s / iteration, ≈ $27.70 |
+
+**Benchmark** (`focus5.jsonl`, horizon 32):
+
+| Checkpoint | Epochs | 1-object |
+| ---: | ---: | --- |
+| 1500 | 0.87 | 0 / 50 |
+| 2500 | 1.44 | 0 / 100 |
+| 6500 | 3.76 | in progress: green shoes 1 / 20 (episode 18, 14.73 s), cardboard box 0 / 20 |
+| 7000 | 4.04 | not evaluated |
+
+Everything for this run is in **[edge/](edge/README.md)**:
+- the training recipe and cosmos-framework tools;
+- the Brev scripts and run record;
+- the merge, export and upload scripts with the model card;
+- `edge/bench/edge_train_mix.jsonl`, a 75-episode benchmark matching the Edge training mix,
+  including 4-object scenes.
+
+Drive it with the same CLI:
+
+```shell
+so101 --config so101-edge.toml status
+so101 --config so101-edge.toml serve --iter 7000
+so101 --config so101-edge.toml eval --gui --iter 7000
+```
+
+The Edge merge must use `--lora-rank 64 --lora-alpha 128`; `so101-edge.toml` sets this.
+
+Training data per run (episodes, samples, epochs) is measured in
+**[docs/training-episodes.md](docs/training-episodes.md)**.
 
 ## Package structure
 
@@ -142,9 +194,19 @@ src/so101_cosmos/
     static/      the page it serves
 tests/           command construction, log parsing, config resolution, inventory
 docs/
-  setup-cosmos.md    server environment: venv, HF access, base checkpoint, cuBLAS fix
-  setup-isaaclab.md  client environment: Kit python, USD assets, eval-script patches
-  post-training.md   the fine-tune recipe: dataset narrowing, LoRA, launch, resume
+  setup-cosmos.md         server environment: venv, HF access, base checkpoint, cuBLAS fix
+  setup-isaaclab.md       client environment: Kit python, USD assets, eval-script patches
+  post-training.md        the fine-tune recipe: dataset narrowing, LoRA, launch, resume
+  training-episodes.md    measured episodes, samples and epochs for every run
+  work-log-2026-09-16.md  review, benchmarks, releases, Edge training on Brev
+edge/
+  README.md               the Cosmos3-Edge run: data, method, results, layout
+  cosmos-framework/       Edge recipe, row-transplant and eval tools, runbook, worklog
+  brev/                   Brev setup/train/sync scripts and the 2026-09-16 run record
+  huggingface/            merge -> export -> upload scripts and the model card
+  bench/                  edge_train_mix.jsonl benchmark set
+so101.example.toml        Nano settings template
+so101-edge.toml           Edge settings
 ```
 
 The split that matters is `pipeline.py` versus `proc.py`: **construction is pure and
@@ -174,8 +236,11 @@ Two optional extras:
 
 ## Configuration
 
-Defaults match the workstation the pipeline was verified on. Override with a TOML file or
-environment variables:
+Defaults match the workstation the pipeline was verified on: checkouts under your home
+directory (`~/cosmos-framework`, `~/IsaacLab/so101_bench`, `~/IsaacLab/_isaac_sim/python.sh`)
+and the Nano run. `train_log_glob` points status and the dashboard at the run's own training
+log (`outputs/edge_setup/train_edge*.log` for Edge). Override with a TOML file or environment
+variables:
 
 ```shell
 so101 --config so101.toml status
@@ -202,6 +267,8 @@ that returns wrong answers:
 | export `--experiment`, not the run's `config.yaml` | that config still declares `lora_enabled = true` and demands adapter keys the merge folded away |
 | `PYTHONPATH` on the client | `so101_bench` is pip-installed editable pointing at a different checkout |
 | `LD_LIBRARY_PATH` first entry | mismatched cuBLAS/cuBLASLt makes every biased `addmm` raise `CUBLAS_STATUS_NOT_INITIALIZED` — on an idle GPU |
+| merge `--lora-rank` / `--lora-alpha` | Nano is 16/32, Edge is 64/128; the wrong pair merges without error into a mis-scaled model |
+| `SO101_ROOT` for export | export resolves the dataset config through it and fails without it |
 
 `--device-memory-bytes` is deliberately **not** passed: it is a no-op on a single GPU,
 reaching only `_build_model_parallelism`, which ignores the value.
@@ -220,8 +287,10 @@ reaching only `_build_model_parallelism`, which ignores the value.
   `outputs/monitor_jobs`, where `tools/train_monitor.py` recorded earlier runs, so nothing
   from before the package existed is lost. Legacy records are read-only.
 - The newest checkpoint is not the best one. On the reference run, iteration 4000 has the
-  lowest loss and scores 0/20, while 3750 scores 13/472 (see [Benchmark](#benchmark)).
+  lowest loss and scores 0/20, while 3750 scores 17/542 (see [Benchmark](#benchmark)).
   Pick from `so101 checkpoints`.
+- Green shoes is two rigid bodies (left and right shoe). The benchmark tracks the first body
+  only, so lifting the other shoe logs `target_lift=0.00in`.
 
 ## Tests
 
@@ -237,8 +306,8 @@ why `LD_LIBRARY_PATH` has to be fixed for the GPU stages.
 
 ## Author
 
-**Kabilan KB** — pipeline, dataset narrowing, single-GPU LoRA recipe, evaluation tooling
-and this package.
+**Kabilan KB** — pipeline, dataset narrowing, single-GPU LoRA recipes for Cosmos3-Nano and
+Cosmos3-Edge, the Brev training run, evaluation tooling and this package.
 
 ## Provenance
 
