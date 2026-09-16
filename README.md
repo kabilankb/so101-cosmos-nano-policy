@@ -146,7 +146,7 @@ action heads start from a trained manipulation mapping instead of random init.
 | Data | 5 single-object bin instructions + "Place each object in the plastic bin" capped at 45 episodes: **128 train / 14 held out** |
 | Method | LoRA rank 64 / alpha 128 + action heads, lr 1e-4, global batch 32, 7,000 iterations (4.04 epochs) |
 | Iterations 0–5500 | 1× RTX PRO 6000, ~21 s / iteration |
-| Iterations 5500–7000 | resumed on NVIDIA Brev, 2× RTX PRO 6000, 9.48 s / iteration, ≈ $27.70 |
+| Iterations 5500–7000 | resumed on NVIDIA Brev, 2× RTX PRO 6000, 9.49 s / iteration, ≈ $27.70 (see [Training on NVIDIA Brev](#training-on-nvidia-brev)) |
 
 **Benchmark** (`focus5.jsonl`, horizon 32):
 
@@ -176,6 +176,88 @@ The Edge merge must use `--lora-rank 64 --lora-alpha 128`; `so101-edge.toml` set
 
 Training data per run (episodes, samples, epochs) is measured in
 **[docs/training-episodes.md](docs/training-episodes.md)**.
+
+## Training on NVIDIA Brev
+
+The last 1,500 Edge iterations (5500 → 7000) ran on an NVIDIA Brev cloud instance, paid from
+a $60 credit, while the workstation GPU stayed free for evaluation. Scripts and the full run
+record are in **[edge/brev/](edge/brev/README.md)**.
+
+### Instance
+
+| | |
+| --- | --- |
+| Machine | 2× RTX PRO 6000 Blackwell Server Edition (96 GB each), 30 CPUs, 283 GB RAM, 1.4 TB disk |
+| Provider / price | MassedCompute via Brev, **$5.26 / hour**, **no stop/start** (billed until deleted) |
+| Software | driver 580.126.09 (CUDA 13), Python 3.13, `torch 2.10.0+cu130` |
+| Why this one | Same GPU model as the workstation, so no new CUDA or kernel risk. The 1× H100 ($3.00 / h) cannot run Isaac Sim, the 1× H200 ($5.40 / h) is only slightly faster, and the 8× H100 ($24.99 / h) could exhaust the credit. |
+
+Edge training peaks at ~26–28 GB per GPU, so any 48 GB+ card fits.
+
+### What ran
+
+| Step | How | Time |
+| --- | --- | --- |
+| Push code + checkpoint | `edge/brev/push_to_brev.sh`: workstation → Brev over SSH with the Brev key forwarded from the laptop; checkpoint `iter_000005500` (6.6 GB) verified by md5 | ~45 min (home upload link) |
+| Environment | `edge/brev/remote_setup.sh`: apt packages, `uv sync --group cu130-train`, dataset (18 GB) and Wan2.2 VAE (2.7 GB) downloaded from Hugging Face on the instance | **1 min 22 s** |
+| Smoke test | `SMOKE=1 remote_train.sh`: 3 iterations; resumed at 5501 with model and optimizer state, loss 1.12–1.36 | ~3 min |
+| Training | `remote_train.sh` in `tmux`: 16 per GPU × 2 GPUs × 1 accumulation = global batch 32, identical to the workstation phase | **3 h 58 min** at 9.49 s / iteration |
+| Copy back | `edge/brev/sync_back.sh`: each new checkpoint (6000, 6500, 7000) copied into `checkpoints_brev/` and verified by md5 every 5 min | ~16–17 min per checkpoint |
+| Delete | `brev delete` as soon as `iter_000007000` was verified | – |
+
+Training finished with `Done (exit 0)` at iteration 7000, final loss ≈ 1.0. The loss continued
+the single-GPU trend: over the same iterations 5501–5738 the Brev run averaged 1.28, against
+1.35 before the workstation run stopped.
+
+### Cost
+
+| Phase | Time | Cost |
+| --- | --- | ---: |
+| Setup, checkpoint upload, smoke test | ~57 min | ≈ $5.00 |
+| Training 5500 → 7000 | 3 h 58 min | ≈ $20.90 |
+| Final copy-back and delete | ~20 min | ≈ $1.80 |
+| **Total** | **≈ 5 h 16 min** | **≈ $27.70 of $60** |
+
+For comparison, the same 1,500 iterations take ~8.75 h on the single workstation GPU.
+
+### Re-running
+
+```shell
+# laptop: log in, create the instance in the Brev console, then
+brev login && brev refresh
+eval "$(ssh-agent -s)" && ssh-add ~/.brev/brev.pem
+
+# workstation, reached with the key forwarded (ssh -A)
+bash edge/brev/push_to_brev.sh <brev-user>@<ip> 5500
+
+# on Brev
+tmux new -d -s setup 'bash ~/remote_setup.sh 2>&1 | tee ~/setup.log'
+SMOKE=1 bash ~/remote_train.sh
+tmux new -d -s train 'bash ~/remote_train.sh 2>&1 | tee ~/train.log'
+
+# workstation: copy checkpoints back as they are saved
+bash edge/brev/sync_back.sh <brev-user>@<ip>
+
+# laptop, once the last checkpoint is verified
+brev delete <instance-name>
+```
+
+`remote_train.sh` keeps the global batch at 32 for any GPU count by adjusting gradient
+accumulation.
+
+### Lessons from the run
+
+- **Download on the instance, upload only what you must.** The 6.6 GB checkpoint took ~45 min to
+  upload from the workstation; the 18 GB dataset downloaded on Brev in under a minute.
+- **The GPU-count override is `model.config.parallelism.data_parallel_shard_degree`**, not
+  `model.parallelism…`; the wrong path fails at startup.
+- **Use `ssh -n` inside scripts fed through `bash -s`**, or the inner `ssh` reads the rest of the
+  script as its stdin.
+- **Run one copy at a time and verify by md5.** Killing a local `ssh` does not stop the remote
+  `rsync`: two concurrent copies plus a killed `--partial` copy left a truncated checkpoint once.
+  Use `--append-verify` to resume.
+- **No stop/start instances bill until deleted.** Copy checkpoints back as they are saved and
+  delete as soon as the last one is verified.
 
 ## Package structure
 
