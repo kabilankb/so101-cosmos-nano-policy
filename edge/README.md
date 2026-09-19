@@ -5,7 +5,7 @@ run that finished it, the Hugging Face release, and a benchmark set matching its
 
 **Released checkpoints:**
 [kabilanKB/cosmos_edge_policy_so101](https://huggingface.co/kabilanKB/cosmos_edge_policy_so101)
-(`iter_6000/`, `iter_6500/`, `iter_7000/`).
+(`iter_6000/`, `iter_6500/`, `iter_7000/`, `single_bin_from6500/iter_*`).
 
 ## The run
 
@@ -27,8 +27,11 @@ run that finished it, the Hugging Face release, and a benchmark set matching its
 | --- | ---: | --- |
 | 1500 | 0.87 | 0 / 50 |
 | 2500 | 1.44 | 0 / 100 |
-| 6500 | 3.76 | **2 / 51 (3.9%)** so far, still running: green shoes 1 / 20 (episode 18, 14.73 s), cardboard box 0 / 20, altoids container 1 / 11 (episode 50, 12.43 s, the first altoids success by any model) |
-| 7000 | 4.04 | not evaluated |
+| 6500 | 3.76 | **5 / 98 (5.1%)**: green shoes 1 / 20 (14.73 s), cardboard box 0 / 20, altoids container 1 / 19 (12.43 s, the first altoids success by any model), flower pot 2 / 19, cooking spoon 1 / 20 |
+| 7000 | 4.04 | 1 / 100 (1.0%) |
+
+**Jetson Thor:** the policy served on a Jetson Thor, with Isaac Lab on an RTX PRO 5000 Blackwell laptop
+and a hardware-in-the-loop web UI, is in **[thor-hil/](thor-hil/README.md)**.
 
 ## Layout
 
@@ -36,6 +39,7 @@ run that finished it, the Hugging Face release, and a benchmark set matching its
 | --- | --- |
 | `../so101-edge.toml` | `so101` CLI settings for the Edge run (`so101 --config so101-edge.toml status`) |
 | `cosmos-framework/recipe/` | Experiment config (`action_policy_so101_edge.py`), single-GPU TOML and launch script. Copy into `cosmos_framework/configs/base/experiment/action/posttrain_config/`, `examples/toml/sft_config/` and `examples/` of a cosmos-framework checkout that has the SO-101 support. |
+| `thor-hil/` | Jetson Thor policy server + Isaac Lab 3.0 client (RTX PRO 5000 Blackwell) + hardware-in-the-loop web UI |
 | `cosmos-framework/tools/` | Action-head row transplant, training dashboard, eval console, per-epoch eval, queue/sweep/resume helpers |
 | `cosmos-framework/docs/` | Edge post-training runbook and worklog |
 | `brev/` | Scripts and README to resume or run training on a Brev instance, and to copy checkpoints back verified |

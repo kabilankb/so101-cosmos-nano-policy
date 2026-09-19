@@ -1,0 +1,653 @@
+<title>SO-101 Thor HIL</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e8ee; --dim: #8b93a7;
+    --accent: #76b900; --warn: #e0a340; --bad: #e0605a;
+    --j0: #5aa9e6; --j1: #f28f3b; --j2: #7bd389; --j3: #c792ea; --j4: #f6d55c; --j5: #ef6f8a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { padding: 14px 16px 40px; max-width: 1500px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: baseline; margin-bottom: 12px; }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  h1 b { color: var(--accent); }
+  .prompt { font-size: 15px; font-weight: 500; }
+  .stat { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .stat b { color: var(--text); font-weight: 600; }
+  .live { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+          border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .paused .dot { background: var(--warn); }
+  .grid { display: grid; grid-template-columns: minmax(280px, 420px) 1fr; gap: 14px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
+              margin: 0 0 8px; font-weight: 600; }
+  .obs { position: relative; }
+  .obs img { width: 100%; display: block; border-radius: 4px; background: #000; min-height: 120px; }
+  .obs .tag { position: absolute; left: 6px; background: rgba(0,0,0,.6); padding: 1px 6px;
+              border-radius: 4px; font-size: 11px; }
+  .charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 700px) { .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  canvas { width: 100%; display: block; }
+  .state { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+  .state div { background: #11141a; border-radius: 4px; padding: 4px 6px; }
+  .state span { display: block; color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scrub { display: flex; gap: 10px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+  .scrub input[type=range] { flex: 1; min-width: 200px; accent-color: var(--accent); }
+  button { background: #222734; color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+           padding: 3px 10px; cursor: pointer; font: inherit; }
+  button:hover { border-color: var(--dim); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  @media (max-width: 900px) { .row2 { grid-template-columns: 1fr; } }
+  .tbl { overflow: auto; max-height: 340px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 2px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 500; position: sticky; top: 0; background: var(--panel); }
+  td.l, th.l { text-align: left; }
+  .ok { color: var(--accent); } .fail { color: var(--dim); } .skip { color: var(--warn); }
+  .legend { color: var(--dim); font-size: 11px; margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin: 0 4px 0 10px; }
+  .empty { color: var(--dim); padding: 30px 0; text-align: center; }
+
+  .ctl { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 900px) { .ctl { grid-template-columns: 1fr; } }
+  .form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+  .form label { display: flex; flex-direction: column; gap: 3px; color: var(--dim); font-size: 11px; }
+  input[type=text], input[type=number], select { background: #11141a; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 8px; font: inherit; min-width: 0; }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; margin-bottom: 10px; }
+  .seg button { border: 0; border-radius: 0; padding: 4px 12px; background: transparent; color: var(--dim); }
+  .seg button.on { background: #222734; color: var(--text); }
+  #ckptTbl td, #ckptTbl th { text-align: left; white-space: normal; padding: 5px 8px; vertical-align: middle; }
+  #ckptTbl tr.sel td { background: #1b2230; }
+  #ckptTbl .best { color: var(--accent); font-weight: 600; font-size: 11px; margin-left: 6px; }
+  #ckptTbl button { padding: 2px 9px; font-size: 12px; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  button:disabled { opacity: .45; cursor: default; }
+  .msg { margin-top: 8px; font-size: 12px; color: var(--dim); min-height: 18px; white-space: pre-wrap; }
+  .msg.good { color: var(--accent); } .msg.bad { color: var(--bad); }
+  .pill { display: inline-block; border-radius: 999px; padding: 1px 9px; border: 1px solid var(--line); font-size: 12px; }
+  .pill.run { border-color: var(--accent); color: var(--accent); } .pill.idle { color: var(--dim); }
+  pre.log { margin: 0; max-height: 260px; overflow: auto; font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #b9c0cf; white-space: pre-wrap; word-break: break-all; }
+  .big { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kpis { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
+  .kpis div span { display: block; color: var(--dim); font-size: 11px; }
+  @media (max-width: 600px) { .wrap { padding: 12px 16px 40px; } .form label { flex: 1 1 100%; } }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <h1>SO-101 <b>hardware-in-the-loop</b></h1>
+    <span class="stat">Cosmos3-Edge policy on the Jetson Thor · Isaac Lab So101Bench on this machine</span>
+    <span class="pill idle" id="runPill">idle</span>
+  </header>
+
+  <div class="ctl">
+    <div class="panel">
+      <h2>1 · Cosmos Edge policy server on the Jetson Thor</h2>
+      <div class="form">
+        <label>Thor IP address<input type="text" id="host" placeholder="Thor IP" size="15" autocomplete="off"></label>
+        <label>SSH user<input type="text" id="user" placeholder="user" size="11" autocomplete="off"></label>
+        <label>Port<input type="number" id="port" value="8000" style="width:76px"></label>
+      </div>
+      <div class="form" style="margin-top:10px">
+        <button class="primary" id="launchBtn">Launch server on Thor</button>
+        <button id="checkBtn">Test connection</button>
+        <button class="danger" id="stopSrvBtn">Stop server</button>
+        <span class="pill idle" id="srvPill">not checked</span>
+      </div>
+      <div class="msg" id="checkMsg">Enter the Thor's IP and SSH user, then launch the server. It loads in ~15 s; the first inference compiles kernels (~20 s).</div>
+      <details style="margin-top:8px"><summary class="stat" style="cursor:pointer">Thor server log</summary>
+        <pre class="log" id="srvLog" style="max-height:200px;margin-top:6px">–</pre></details>
+    </div>
+    <div class="panel">
+      <h2>2 · Task (Isaac Lab runs here)</h2>
+      <div class="seg" role="tablist">
+        <button id="modeCustom" role="tab" class="on">Pick an object</button>
+        <button id="modeSuite" role="tab">Benchmark suite</button>
+      </div>
+      <div id="customBox">
+        <div class="form">
+          <label>Object on the table<select id="object"></select></label>
+          <label>Episodes<input type="number" id="cEp" min="1" max="100" value="5" style="width:76px"></label>
+          <label>Layout seed<input type="number" id="seed" value="1984" style="width:90px"></label>
+        </div>
+        <div class="form" style="margin-top:8px">
+          <label style="flex:1">Prompt sent to the policy<input type="text" id="taskPrompt" maxlength="300" autocomplete="off"></label>
+          <button id="promptReset" title="Use the prompt format the policy was trained on">Reset prompt</button>
+        </div>
+        <div class="msg" id="objMsg"></div>
+      </div>
+      <div id="suiteBox" hidden>
+        <div class="form">
+          <label>Suite<select id="suite"></select></label>
+          <label>Episodes (blank = all)<input type="number" id="numEp" min="1" placeholder="all" style="width:90px"></label>
+        </div>
+        <div class="msg" id="suiteMsg"></div>
+      </div>
+      <div class="form" style="margin-top:10px;align-items:center">
+        <span class="stat">Isaac Lab display</span>
+        <div class="seg" style="margin:0">
+          <button id="dispGui" class="on" title="Open the Isaac Sim window on this machine to watch the SO-101">Isaac Sim window (GUI)</button>
+          <button id="dispHeadless" title="No window; renders the cameras only (faster)">Headless</button>
+        </div>
+        <input type="checkbox" id="gui" checked hidden>
+        <label style="flex-direction:row;align-items:center;gap:6px;color:var(--text)"><input type="checkbox" id="autoLaunch" checked> Launch Thor server if needed</label>
+      </div>
+      <div class="form" style="margin-top:10px">
+        <button class="primary" id="startBtn">Start run</button>
+        <button id="pauseBtn">Pause</button>
+        <button id="resumeBtn">Resume</button>
+        <button id="skipBtn">Skip episode</button>
+        <button class="danger" id="stopBtn">Stop</button>
+      </div>
+      <div class="msg" id="runMsg"></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <h2>Checkpoint served by the Thor</h2>
+    <div class="stat" id="ckptHead">Enter the Thor's IP and SSH user to see which checkpoints are on it.</div>
+    <div class="tbl" style="max-height:none;margin-top:8px"><table id="ckptTbl"></table></div>
+    <div class="msg" id="ckptMsg"></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <h2>Results</h2>
+    <div class="kpis">
+      <div><span>successes</span><b class="big ok" id="kOk">–</b></div>
+      <div><span>episodes finished</span><b class="big" id="kRun">–</b></div>
+      <div><span>success rate</span><b class="big" id="kRate">–</b></div>
+      <div><span>Thor inference (median)</span><b class="big" id="kInfer">–</b></div>
+      <div><span>round-trip (median)</span><b class="big" id="kRt">–</b></div>
+      <div><span>elapsed</span><b class="big" id="kTime">–</b></div>
+    </div>
+  </div>
+  <header>
+    <span class="prompt" id="prompt">waiting for the first request…</span>
+    <span class="live" id="live" title="pause to inspect"><span class="dot"></span><span id="liveTxt">live</span></span>
+  </header>
+  <header style="margin-top:-4px">
+    <span class="stat">episode <b id="ep">–</b></span>
+    <span class="stat">chunk <b id="chunkInEp">–</b> in episode</span>
+    <span class="stat">request <b id="req">–</b></span>
+    <span class="stat">at <b id="wall">–</b></span>
+    <span class="stat">inference <b id="infer">–</b> ms</span>
+    <span class="stat">round-trip <b id="rt">–</b> ms</span>
+    <span class="stat">since previous <b id="gap">–</b> s</span>
+    <span class="stat">rate <b id="rate">–</b> chunks/min</span>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Observation sent to the policy</h2>
+      <div class="obs">
+        <img id="img" alt="observation">
+        <span class="tag" style="top:6px">wrist camera</span>
+        <span class="tag" style="top:calc(50% + 6px)">overhead camera</span>
+      </div>
+      <div class="state" id="state"></div>
+      <div class="legend">State = joint positions in LeRobot units (joints ±100, gripper 0–100), the row the chunk is conditioned on.</div>
+    </div>
+    <div class="panel">
+      <h2>Action chunk returned (32 steps × 6 joints, 1.07 s at 30 Hz)</h2>
+      <div class="charts" id="chunkCharts"></div>
+      <div class="legend">
+        <i style="background:var(--dim)"></i>previous chunk
+        <i style="background:var(--j0)"></i>this chunk
+        ● current state (step 0)
+      </div>
+    </div>
+  </div>
+
+  <div class="scrub">
+    <button id="prev">◀</button>
+    <input type="range" id="slider" min="0" max="0" value="0">
+    <button id="next">▶</button>
+    <span class="stat" id="pos">–</span>
+  </div>
+
+  <div class="panel">
+    <h2>Episode so far: every chunk laid end to end, dots are the observed state at each request</h2>
+    <div class="charts" id="epCharts"></div>
+  </div>
+
+  <div class="row2">
+    <div class="panel">
+      <h2>Chunk values</h2>
+      <div class="tbl" id="chunkTbl"></div>
+    </div>
+    <div class="panel">
+      <h2>Benchmark episodes</h2>
+      <div class="tbl" id="epTbl"><div class="empty">no finished episodes yet</div></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <h2>Isaac Lab client log</h2>
+    <pre class="log" id="log">no run yet</pre>
+  </div>
+</div>
+<script>
+const JOINT_COLORS = ["--j0","--j1","--j2","--j3","--j4","--j5"].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+const DIM = getComputedStyle(document.documentElement).getPropertyValue("--dim").trim();
+const LINE = getComputedStyle(document.documentElement).getPropertyValue("--line").trim();
+const CHUNK_S = 32 / 30;
+let joints = ["shoulder_pan","shoulder_lift","elbow_flex","wrist_flex","wrist_roll","gripper"];
+let records = [];      // all records the page has seen, ordered by i
+let last = -1;
+let live = true;
+let cursor = -1;       // index into records
+
+const $ = id => document.getElementById(id);
+
+function makeCanvases(host, n, h) {
+  host.innerHTML = "";
+  return Array.from({length: n}, () => { const c = document.createElement("canvas"); c.dataset.h = h; host.appendChild(c); return c; });
+}
+const chunkCanvases = makeCanvases($("chunkCharts"), 6, 150);
+const epCanvases = makeCanvases($("epCharts"), 6, 150);
+
+function fit(c) {
+  const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = +c.dataset.h;
+  c.width = w * dpr; c.height = h * dpr; c.style.height = h + "px";
+  const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, w, h];
+}
+
+function plot(c, title, color, series, xmax, points) {
+  // series: [{xs, ys, color, width, alpha}], points: [{x, y, color}]
+  const [ctx, w, h] = fit(c);
+  const pad = {l: 36, r: 6, t: 16, b: 16};
+  let lo = Infinity, hi = -Infinity;
+  for (const s of series) for (const y of s.ys) { lo = Math.min(lo, y); hi = Math.max(hi, y); }
+  for (const p of points) { lo = Math.min(lo, p.y); hi = Math.max(hi, p.y); }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
+  const span = hi - lo; lo -= span * .08; hi += span * .08;
+  const X = x => pad.l + (x / xmax) * (w - pad.l - pad.r);
+  const Y = y => pad.t + (1 - (y - lo) / (hi - lo)) * (h - pad.t - pad.b);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = color; ctx.font = "600 11px system-ui"; ctx.fillText(title, pad.l, 11);
+  ctx.strokeStyle = LINE; ctx.lineWidth = 1; ctx.fillStyle = DIM; ctx.font = "10px system-ui";
+  for (const f of [0, .5, 1]) {
+    const v = lo + f * (hi - lo), y = Y(v);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), 2, y + 3);
+  }
+  ctx.fillText("0", pad.l, h - 3);
+  const xl = xmax.toFixed(xmax < 5 ? 2 : 0) + " s"; ctx.fillText(xl, w - pad.r - ctx.measureText(xl).width, h - 3);
+  for (const s of series) {
+    ctx.globalAlpha = s.alpha ?? 1; ctx.strokeStyle = s.color; ctx.lineWidth = s.width ?? 1.6;
+    ctx.beginPath(); s.xs.forEach((x, k) => k ? ctx.lineTo(X(x), Y(s.ys[k])) : ctx.moveTo(X(x), Y(s.ys[k]))); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  for (const p of points) { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), p.r ?? 3, 0, 7); ctx.fill(); }
+}
+
+function render() {
+  if (!records.length) return;
+  const r = records[cursor];
+  $("prompt").textContent = r.prompt;
+  $("ep").textContent = r.episode;
+  const epRecs = records.filter(x => x.episode === r.episode && x.i <= r.i);
+  $("chunkInEp").textContent = epRecs.length;
+  $("req").textContent = r.i;
+  $("wall").textContent = r.wall;
+  $("infer").textContent = r.infer_ms.toFixed(0);
+  $("rt").textContent = r.roundtrip_ms.toFixed(0);
+  $("gap").textContent = r.since_prev_s == null ? "–" : r.since_prev_s.toFixed(1);
+  const recent = records.slice(Math.max(0, cursor - 20), cursor + 1).filter(x => x.since_prev_s != null && x.since_prev_s < 15);
+  const meanGap = recent.reduce((a, x) => a + x.since_prev_s, 0) / (recent.length || 1);
+  $("rate").textContent = recent.length ? (60 / meanGap).toFixed(1) : "–";
+
+  const img = $("img"), src = `/obs/${r.i}.jpg`;
+  if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+
+  $("state").innerHTML = r.state.map((v, j) => `<div><span>${joints[j]}</span><b style="color:${JOINT_COLORS[j]}">${v.toFixed(1)}</b></div>`).join("");
+
+  const prev = records[cursor - 1] && records[cursor - 1].episode === r.episode ? records[cursor - 1] : null;
+  const steps = r.action.map((_, k) => (k + 1) / 30);
+  chunkCanvases.forEach((c, j) => {
+    const series = [];
+    if (prev) series.push({xs: prev.action.map((_, k) => (k + 1) / 30 - CHUNK_S), ys: prev.action.map(a => a[j]), color: DIM, alpha: .5, width: 1});
+    series.push({xs: [0, ...steps], ys: [r.state[j], ...r.action.map(a => a[j])], color: JOINT_COLORS[j], width: 2});
+    const vis = series.map(s => ({...s, xs: s.xs.map(x => x + (prev ? CHUNK_S : 0))}));
+    plot(c, joints[j], JOINT_COLORS[j], vis, CHUNK_S * (prev ? 2 : 1), [{x: prev ? CHUNK_S : 0, y: r.state[j], color: "#fff"}]);
+  });
+
+  const t0 = epRecs.length ? epRecs[0].t : r.t;
+  const epEnd = Math.max(CHUNK_S * epRecs.length, 1);
+  epCanvases.forEach((c, j) => {
+    const series = epRecs.map((x, k) => ({
+      xs: [k * CHUNK_S, ...x.action.map((_, s) => k * CHUNK_S + (s + 1) / 30)],
+      ys: [x.state[j], ...x.action.map(a => a[j])],
+      color: JOINT_COLORS[j], width: x.i === r.i ? 2.2 : 1.2, alpha: x.i === r.i ? 1 : .65,
+    }));
+    const points = epRecs.map((x, k) => ({x: k * CHUNK_S, y: x.state[j], color: "#fff", r: 2}));
+    plot(c, joints[j], JOINT_COLORS[j], series, epEnd, points);
+  });
+
+  $("chunkTbl").innerHTML = "<table><tr><th>step</th><th>t (s)</th>" + joints.map((n, j) => `<th style="color:${JOINT_COLORS[j]}">${n}</th>`).join("") + "</tr>"
+    + `<tr><td>state</td><td>0.000</td>${r.state.map(v => `<td>${v.toFixed(2)}</td>`).join("")}</tr>`
+    + r.action.map((a, k) => `<tr><td>${k + 1}</td><td>${((k + 1) / 30).toFixed(3)}</td>${a.map(v => `<td>${v.toFixed(2)}</td>`).join("")}</tr>`).join("") + "</table>";
+
+  const slider = $("slider"); slider.max = records.length - 1; slider.value = cursor;
+  $("pos").textContent = `${cursor + 1} / ${records.length} loaded`;
+}
+
+async function poll() {
+  try {
+    const res = await fetch(`/api/records?after=${last}&limit=500`);
+    const data = await res.json();
+    joints = data.joints || joints;
+    if (data.records.length) {
+      records.push(...data.records);
+      last = records[records.length - 1].i;
+      if (records.length > 3000) { const drop = records.length - 3000; records.splice(0, drop); cursor = Math.max(0, cursor - drop); }
+      if (live) cursor = records.length - 1;
+      render();
+    }
+  } catch (e) { /* server restarting; try again */ }
+  setTimeout(poll, 1000);
+}
+
+async function pollEpisodes() {
+  try {
+    const eps = await (await fetch("/api/episodes")).json();
+    const ok0 = eps.filter(e => e.result === "success").length, run0 = eps.filter(e => e.result !== "skipped").length;
+    $("kOk").textContent = eps.length ? ok0 : "–"; $("kRun").textContent = eps.length ? run0 : "–";
+    $("kRate").textContent = run0 ? (100 * ok0 / run0).toFixed(1) + " %" : "–";
+    if (!eps.length) $("epTbl").innerHTML = '<div class="empty">no finished episodes yet</div>';
+    if (eps.length) {
+      const ok = eps.filter(e => e.result === "success").length, run = eps.filter(e => e.result !== "skipped").length;
+      $("epTbl").innerHTML = `<div class="stat" style="margin-bottom:6px"><b>${ok}</b> successes / <b>${run}</b> episodes</div>`
+        + "<table><tr><th>#</th><th class=l>object</th><th class=l>group</th><th class=l>result</th><th>s</th></tr>"
+        + eps.slice().reverse().map(e => `<tr><td>${e.n}</td><td class=l>${e.object}</td><td class=l>${e.group.replace(/_/g, " ")}</td>`
+          + `<td class="l ${e.result === "success" ? "ok" : e.result === "skipped" ? "skip" : "fail"}">${e.result}</td><td>${e.seconds == null ? "" : e.seconds.toFixed(1)}</td></tr>`).join("")
+        + "</table>";
+    }
+  } catch (e) {}
+  setTimeout(pollEpisodes, 4000);
+}
+
+function setLive(v) { live = v; $("live").classList.toggle("paused", !v); $("liveTxt").textContent = v ? "live" : "paused"; if (v && records.length) { cursor = records.length - 1; render(); } }
+$("live").onclick = () => setLive(!live);
+$("slider").oninput = e => { setLive(false); cursor = +e.target.value; render(); };
+$("prev").onclick = () => { setLive(false); cursor = Math.max(0, cursor - 1); render(); };
+$("next").onclick = () => { cursor = Math.min(records.length - 1, cursor + 1); render(); };
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft") $("prev").click();
+  if (e.key === "ArrowRight") $("next").click();
+  if (e.key === " ") { e.preventDefault(); setLive(!live); }
+});
+window.addEventListener("resize", render);
+
+const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+function kpis() {
+  const tail = records.slice(-60);
+  const inf = median(tail.map(r => r.infer_ms).filter(v => v > 0)), rt = median(tail.map(r => r.roundtrip_ms));
+  $("kInfer").textContent = inf == null ? "–" : inf.toFixed(0) + " ms";
+  $("kRt").textContent = rt == null ? "–" : rt.toFixed(0) + " ms";
+}
+setInterval(kpis, 2000);
+
+function msg(id, text, cls) { const el = $(id); el.textContent = text; el.className = "msg" + (cls ? " " + cls : ""); }
+async function post(url, body) {
+  const res = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+  return res.json();
+}
+function saveForm() {
+  try { localStorage.setItem("so101thor", JSON.stringify({host: $("host").value, user: $("user").value, port: $("port").value, suite: $("suite").value,
+    numEp: $("numEp").value, gui: $("gui").checked, autoLaunch: $("autoLaunch").checked, mode,
+    object: $("object").value, prompt: $("taskPrompt").value, cEp: $("cEp").value, seed: $("seed").value, ckpt: selectedCkpt})); } catch (e) {}
+}
+function loadForm(cfg) {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem("so101thor") || "{}"); } catch (e) {}
+  $("host").value = s.host || cfg.default_host || "";
+  $("user").value = s.user || cfg.default_user || "";
+  $("autoLaunch").checked = s.autoLaunch !== false;
+  $("port").value = s.port || cfg.default_port || 8000;
+  if (s.suite && cfg.suites[s.suite]) $("suite").value = s.suite;
+  $("numEp").value = s.numEp || ""; $("gui").checked = s.gui !== false;
+  if (s.object && cfg.objects.includes(s.object)) $("object").value = s.object;
+  $("taskPrompt").value = s.prompt || defaultPrompt($("object").value);
+  $("cEp").value = s.cEp || 5; $("seed").value = s.seed || 1984;
+  setMode(s.mode === "suite" ? "suite" : "custom");
+  setDisplay(s.gui !== false);
+  if (s.ckpt) selectedCkpt = s.ckpt;
+}
+let suiteInfo = {}, suiteSizes = {};
+let mode = "custom", trainedObjects = [];
+const defaultPrompt = obj => `Place the ${obj} in the plastic bin`;
+function setMode(m) {
+  mode = m;
+  $("modeCustom").classList.toggle("on", m === "custom"); $("modeSuite").classList.toggle("on", m === "suite");
+  $("customBox").hidden = m !== "custom"; $("suiteBox").hidden = m !== "suite";
+}
+function showObject() {
+  const o = $("object").value, trained = trainedObjects.includes(o);
+  const p = $("taskPrompt").value.trim();
+  const note = p && p !== defaultPrompt(o)
+    ? " The policy was trained on prompts of the form “Place the <object> in the plastic bin”; other wording is untested."
+    : "";
+  msg("objMsg", (trained ? `“${o}” is one of the 5 objects the policy was trained on.`
+    : `“${o}” was never in the policy's training data (unseen object).`)
+    + " Each episode places it and the bin at a random valid pose (same seed → same layouts)." + note);
+}
+function showSuite() { const k = $("suite").value; msg("suiteMsg", suiteInfo[k] || ""); }
+
+const thorCfg = () => ({host: $("host").value.trim(), user: $("user").value.trim(), port: +$("port").value || 8000});
+let selectedCkpt = null, ckptInfo = null, loadedCkpt = null;
+function renderCkpts() {
+  if (!ckptInfo) return;
+  const list = ckptInfo.checkpoints;
+  if (!selectedCkpt || !list.some(c => c.path === selectedCkpt)) selectedCkpt = (list.find(c => c.best) || list[0]).path;
+  const dl = ckptInfo.download;
+  $("ckptHead").innerHTML = `Loaded on the Thor: <b>${loadedCkpt || "none (server not running)"}</b> · selected: <b>${selectedCkpt}</b>`
+    + ` · free disk on the Thor: <b>${ckptInfo.free_gb ?? "?"} GB</b> (one checkpoint ≈ ${ckptInfo.need_gb} GB)`
+    + (dl ? ` · <span style="color:var(--warn)">downloading ${dl.path} (${(dl.mb / 1024).toFixed(1)} GB so far)</span>` : "");
+  $("ckptTbl").innerHTML = "<tr><th></th><th>Checkpoint</th><th>Training run</th><th>Results so far</th><th>On the Thor</th><th></th></tr>"
+    + list.map(c => {
+      const where = c.downloading ? '<span style="color:var(--warn)">downloading…</span>'
+        : c.on_thor ? `yes · ${(c.size_mb / 1024).toFixed(1)} GB${c.loaded ? ' · <span class="ok">loaded</span>' : ""}` : '<span class="fail">no</span>';
+      const act = c.downloading ? "" : c.on_thor
+        ? (c.loaded ? "" : `<button class="danger" data-del="${c.path}">Delete</button>`)
+        : `<button data-dl="${c.path}">Download</button>`;
+      return `<tr class="${c.path === selectedCkpt ? "sel" : ""}"><td><input type="radio" name="ckpt" value="${c.path}" ${c.path === selectedCkpt ? "checked" : ""}></td>`
+        + `<td><b>${c.path}</b>${c.best ? '<span class="best">BEST</span>' : ""}</td><td>${c.run}, iteration ${c.iter}</td>`
+        + `<td>${c.results}</td><td>${where}</td><td>${act}</td></tr>`;
+    }).join("");
+  $("ckptTbl").querySelectorAll("input[name=ckpt]").forEach(r => r.onchange = () => { selectedCkpt = r.value; saveForm(); renderCkpts(); updateLaunchLabel(); });
+  $("ckptTbl").querySelectorAll("[data-dl]").forEach(b => b.onclick = () => ckptAction("download", b.dataset.dl));
+  $("ckptTbl").querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    if (confirm(`Delete ${b.dataset.del} from the Thor? It can be downloaded again later.`)) ckptAction("delete", b.dataset.del);
+  });
+  updateLaunchLabel();
+}
+function updateLaunchLabel() {
+  $("launchBtn").textContent = loadedCkpt && selectedCkpt && loadedCkpt !== selectedCkpt ? `Switch Thor to ${selectedCkpt}` : "Launch server on Thor";
+}
+async function refreshCkpts() {
+  const c = thorCfg();
+  if (!c.host || !c.user) return;
+  try {
+    const r = await post("/api/thor/checkpoints", c);
+    if (!r.ok) { msg("ckptMsg", "✗ " + r.error, "bad"); return; }
+    ckptInfo = r; loadedCkpt = r.loaded; renderCkpts();
+  } catch (e) {}
+}
+async function ckptAction(kind, path) {
+  msg("ckptMsg", kind === "download" ? `Starting the download of ${path} on the Thor (~${ckptInfo.need_gb} GB, a few minutes)…` : `Deleting ${path}…`);
+  const r = await post(`/api/thor/${kind}`, {...thorCfg(), checkpoint: path});
+  msg("ckptMsg", r.ok ? r.message : "✗ " + r.error, r.ok ? "good" : "bad");
+  refreshCkpts();
+}
+setInterval(() => { if (!document.hidden) refreshCkpts(); }, 8000);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let srvState = "unknown";
+function setSrv(state, text) {
+  srvState = state;
+  const pill = $("srvPill");
+  pill.textContent = text || state;
+  pill.className = "pill " + (state === "ready" ? "run" : "idle");
+  pill.style.borderColor = state === "error" || state === "unreachable" ? "var(--bad)" : state === "starting" ? "var(--warn)" : "";
+  pill.style.color = state === "error" || state === "unreachable" ? "var(--bad)" : state === "starting" ? "var(--warn)" : "";
+}
+async function thorStatus() {
+  const c = thorCfg();
+  if (!c.host || !c.user) return null;
+  try {
+    const r = await post("/api/thor/status", c);
+    if (r.log !== undefined) { const el = $("srvLog"); el.textContent = r.log || "(no log yet)"; el.scrollTop = el.scrollHeight; }
+    if (!r.ok) { setSrv(r.state || "error", r.state === "unreachable" ? "Thor unreachable" : "error"); msg("checkMsg", "✗ " + r.error, "bad"); return r; }
+    if (r.checkpoint) loadedCkpt = r.checkpoint; else if (r.state === "stopped") loadedCkpt = null;
+    setSrv(r.state, {ready: `ready · ${r.checkpoint || "?"} · ${c.host}:${c.port}`, starting: `loading ${r.checkpoint || "model"}…`, stopped: "not running", error: "server error"}[r.state] || r.state);
+    updateLaunchLabel();
+    return r;
+  } catch (e) { return null; }
+}
+async function testConnection(quiet) {
+  const c = thorCfg();
+  if (!c.host) { msg("checkMsg", "Enter the Thor's IP address.", "bad"); return false; }
+  msg("checkMsg", `Sending two test inferences to ${c.host}:${c.port} (the first after a server start compiles kernels, ~20 s)…`);
+  const r = await post("/api/check", c);
+  if (!r.ok) { msg("checkMsg", `✗ ${r.error}`, "bad"); return false; }
+  const units = r.units_ok ? "" : "\n⚠ actions are inside [-1, 1]: the server is probably missing its normalization flags.";
+  msg("checkMsg", `✓ Policy server ready at ${c.host}:${c.port}\nchunk ${r.action_shape.join(" × ")}, values ${r.action_min} … ${r.action_max}\n`
+    + `Thor inference ${r.infer_ms} ms · round-trip ${r.roundtrip_ms.join(" / ")} ms${units}`, r.units_ok ? "good" : "bad");
+  return r.units_ok;
+}
+// Launch (if needed) -> wait for "ready" -> warm up. Returns true when the Thor is serving.
+async function ensureServer() {
+  const c = thorCfg();
+  if (!c.host || !c.user) { msg("checkMsg", "Enter the Thor's IP address and SSH user.", "bad"); return false; }
+  if (ckptInfo && !ckptInfo.checkpoints.some(k => k.path === selectedCkpt && k.on_thor)) {
+    msg("checkMsg", `✗ ${selectedCkpt} is not on the Thor yet. Download it in the Checkpoints panel first.`, "bad"); return false;
+  }
+  const switching = loadedCkpt && loadedCkpt !== selectedCkpt;
+  msg("checkMsg", switching ? `Switching the Thor from ${loadedCkpt} to ${selectedCkpt}…` : `Launching the policy server with ${selectedCkpt || "the default checkpoint"} on ${c.user}@${c.host}…`);
+  const r = await post("/api/thor/launch", {...c, checkpoint: selectedCkpt});
+  if (!r.ok) { msg("checkMsg", "✗ " + r.error, "bad"); setSrv("error", "launch failed"); return false; }
+  if (!r.already_running) {
+    setSrv("starting", "loading model…");
+    const t0 = Date.now();
+    while (Date.now() - t0 < 300000) {
+      await sleep(3000);
+      const st = await thorStatus();
+      if (st && st.healthy) break;
+      if (st && (st.state === "error" || (st.state === "stopped" && Date.now() - t0 > 15000))) {
+        msg("checkMsg", "✗ The server stopped while loading; see the Thor server log below.", "bad");
+        $("srvLog").closest("details").open = true; return false;
+      }
+      msg("checkMsg", `Loading the model on the Thor… ${Math.round((Date.now() - t0) / 1000)} s`);
+    }
+  }
+  await thorStatus(); await refreshCkpts();
+  return await testConnection();
+}
+$("launchBtn").onclick = async () => { saveForm(); $("launchBtn").disabled = true; await ensureServer(); $("launchBtn").disabled = false; };
+$("checkBtn").onclick = async () => { saveForm(); $("checkBtn").disabled = true; await thorStatus(); await testConnection(); $("checkBtn").disabled = false; };
+$("stopSrvBtn").onclick = async () => {
+  if (st.running && !confirm("A benchmark run is using this server. Stop the server anyway?")) return;
+  const r = await post("/api/thor/stop", thorCfg());
+  msg("checkMsg", r.ok ? "Policy server stopped on the Thor." : "✗ " + r.error, r.ok ? "" : "bad");
+  await thorStatus();
+};
+setInterval(() => { if (!document.hidden) thorStatus(); }, 6000);
+
+$("startBtn").onclick = async () => {
+  saveForm();
+  const body = mode === "custom"
+    ? {host: $("host").value.trim(), port: +$("port").value || 8000, mode: "custom", gui: $("gui").checked,
+       object: $("object").value, prompt: $("taskPrompt").value.trim() || defaultPrompt($("object").value),
+       num_episodes: +$("cEp").value || 5, seed: +$("seed").value || 1984}
+    : {host: $("host").value.trim(), port: +$("port").value || 8000, mode: "suite", suite: $("suite").value,
+       gui: $("gui").checked, num_episodes: $("numEp").value ? +$("numEp").value : null};
+  if (!body.host) return msg("runMsg", "Enter the Thor's IP address.", "bad");
+  $("startBtn").disabled = true;
+  if ($("autoLaunch").checked && (srvState !== "ready" || (loadedCkpt && selectedCkpt && loadedCkpt !== selectedCkpt))) {
+    msg("runMsg", "Getting the Thor policy server ready first…");
+    if (!(await ensureServer())) { msg("runMsg", "✗ The Thor policy server is not ready; see step 1.", "bad"); $("startBtn").disabled = false; return; }
+  }
+  body.checkpoint = loadedCkpt || selectedCkpt;
+  const r = await post("/api/start", body);
+  if (!r.ok) { msg("runMsg", "✗ " + r.error, "bad"); $("startBtn").disabled = false; return; }
+  records = []; last = -1; cursor = -1; clearLive();
+  msg("runMsg", `Started (pid ${r.pid})${r.gui ? `; the Isaac Sim window opens on display ${r.display}` : " headless"}. Isaac Sim takes about 1–2 minutes to load before the first request reaches the Thor.\nRun folder: ${r.run_dir}`, "good");
+  status();
+};
+$("stopBtn").onclick = async () => { const r = await post("/api/stop"); msg("runMsg", r.ok ? "Stopped." : "✗ " + r.error, r.ok ? "" : "bad"); status(); };
+for (const [id, command] of [["pauseBtn", "pause"], ["resumeBtn", "resume"], ["skipBtn", "skip"]])
+  $(id).onclick = async () => { const r = await post("/api/control", {command}); msg("runMsg", r.ok ? `Sent “${command}”.` : "✗ " + r.error, r.ok ? "" : "bad"); };
+$("suite").onchange = () => { showSuite(); saveForm(); };
+function setDisplay(gui) {
+  $("gui").checked = gui;
+  $("dispGui").classList.toggle("on", gui); $("dispHeadless").classList.toggle("on", !gui);
+}
+$("dispGui").onclick = () => { setDisplay(true); saveForm(); };
+$("dispHeadless").onclick = () => { setDisplay(false); saveForm(); };
+$("modeCustom").onclick = () => { setMode("custom"); saveForm(); };
+$("modeSuite").onclick = () => { setMode("suite"); saveForm(); };
+$("object").onchange = () => {
+  const prev = $("taskPrompt").dataset.obj;
+  // keep a hand-edited prompt, but follow the object when the prompt is still the default one
+  if (!$("taskPrompt").value.trim() || !prev || $("taskPrompt").value === defaultPrompt(prev)) $("taskPrompt").value = defaultPrompt($("object").value);
+  $("taskPrompt").dataset.obj = $("object").value; showObject(); saveForm();
+};
+$("taskPrompt").oninput = () => { showObject(); saveForm(); };
+$("promptReset").onclick = () => { $("taskPrompt").value = defaultPrompt($("object").value); showObject(); saveForm(); };
+
+function clearLive() {
+  $("prompt").textContent = "waiting for the first request…";
+  for (const id of ["ep", "chunkInEp", "req", "wall", "infer", "rt", "gap", "rate", "kOk", "kRun", "kRate", "kInfer", "kRt"]) $(id).textContent = "–";
+  $("img").removeAttribute("src"); $("state").innerHTML = ""; $("chunkTbl").innerHTML = "";
+  $("epTbl").innerHTML = '<div class="empty">no finished episodes yet</div>';
+  [...chunkCanvases, ...epCanvases].forEach(c => c.getContext("2d").clearRect(0, 0, c.width, c.height));
+  $("slider").max = 0; $("pos").textContent = "–";
+}
+function fmtDur(s) { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return (h ? h + " h " : "") + m + " min " + (s % 60) + " s"; }
+let st = {};
+async function status() {
+  try {
+    st = await (await fetch("/api/status")).json();
+    const pill = $("runPill");
+    pill.textContent = st.running ? `running · ${st.checkpoint || "?"} · ${st.suite} · ${st.gui ? "GUI" : "headless"} → ${st.host}:${st.port}` : (st.exit_code == null ? "idle" : `finished (exit ${st.exit_code})`);
+    pill.className = "pill " + (st.running ? "run" : "idle");
+    $("startBtn").disabled = !!st.running;
+    for (const id of ["stopBtn", "pauseBtn", "resumeBtn", "skipBtn"]) $(id).disabled = !st.running;
+    $("kTime").textContent = st.started_t ? fmtDur((st.running ? Date.now() / 1000 : (records.length ? records[records.length - 1].t : Date.now() / 1000)) - st.started_t) : "–";
+  } catch (e) {}
+}
+async function pollLog() {
+  try {
+    const t = await (await fetch("/api/log?lines=80")).text();
+    const el = $("log"), atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+    if (t) { el.textContent = t; if (atEnd) el.scrollTop = el.scrollHeight; }
+  } catch (e) {}
+  setTimeout(pollLog, 3000);
+}
+
+(async () => {
+  const cfg = await (await fetch("/api/config")).json();
+  suiteInfo = cfg.suites; suiteSizes = cfg.suite_sizes || {};
+  joints = cfg.joints || joints;
+  trainedObjects = cfg.trained_objects || [];
+  const others = (cfg.objects || []).filter(o => !trainedObjects.includes(o));
+  $("object").innerHTML = `<optgroup label="Trained on (5)">${trainedObjects.map(o => `<option>${o}</option>`).join("")}</optgroup>`
+    + `<optgroup label="Not in training (${others.length})">${others.map(o => `<option>${o}</option>`).join("")}</optgroup>`;
+  $("suite").innerHTML = Object.keys(cfg.suites).map(k => `<option value="${k}">${k}${suiteSizes[k] ? " (" + suiteSizes[k] + ")" : ""}</option>`).join("");
+  loadForm(cfg); $("taskPrompt").dataset.obj = $("object").value; showSuite(); showObject(); status(); thorStatus(); refreshCkpts();
+  setInterval(status, 3000);
+})();
+poll(); pollEpisodes(); pollLog();
+</script>

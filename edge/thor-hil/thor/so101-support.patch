@@ -1,0 +1,2242 @@
+diff --git a/cosmos_framework/configs/base/config.py b/cosmos_framework/configs/base/config.py
+index b3bd225..aeda39d 100644
+--- a/cosmos_framework/configs/base/config.py
++++ b/cosmos_framework/configs/base/config.py
+@@ -38,6 +38,7 @@ class Config(config.Config):
+             {"ema": "power"},
+             {"tokenizer": "wan2pt2_tokenizer"},
+             {"sound_tokenizer": None},  # Optional: for audio-video generation
++            {"cluster": "default"},
+             {"vlm_config": None},
+             {"ckpt_type": "dcp"},
+             {"experiment": None},
+@@ -71,6 +72,7 @@ def make_config() -> Config:
+ 
+     from cosmos_framework.configs.base.defaults.callbacks import register_callbacks
+     from cosmos_framework.configs.base.defaults.checkpointer import register_checkpoint, register_ckpt_type
++    from cosmos_framework.configs.base.defaults.cluster import register_cluster
+     from cosmos_framework.configs.base.defaults.ema import register_ema
+ 
+     # from cosmos_framework.configs.base.defaults.data import register_data
+@@ -90,6 +92,7 @@ def make_config() -> Config:
+     register_tokenizer()
+     register_sound_tokenizer()
+     register_ema()
++    register_cluster()
+     register_vlm()
+ 
+     # Register shipped experiments explicitly. (vision_sft_nano also defines
+@@ -101,5 +104,7 @@ def make_config() -> Config:
+     import cosmos_framework.configs.base.experiment.sft.vision_sft_nano  # noqa: F401
+     import cosmos_framework.configs.base.experiment.sft.vision_sft_super  # noqa: F401
+     import cosmos_framework.configs.base.experiment.sft.vision_sft_edge  # noqa: F401
++    import cosmos_framework.configs.base.experiment.action.posttrain_config.action_policy_so101_nano  # noqa: F401
++    import cosmos_framework.configs.base.experiment.action.posttrain_config.action_policy_so101_edge  # noqa: F401
+ 
+     return c
+diff --git a/cosmos_framework/configs/base/defaults/cluster.py b/cosmos_framework/configs/base/defaults/cluster.py
+new file mode 100644
+index 0000000..23b49dd
+--- /dev/null
++++ b/cosmos_framework/configs/base/defaults/cluster.py
+@@ -0,0 +1,36 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++import attrs
++from hydra.core.config_store import ConfigStore
++
++
++@attrs.define(slots=False)
++class ClusterConfig:
++    """
++    Config for the cluster specific information.
++    Everything cluster specific should be here.
++    """
++
++    object_store_bucket_data: str
++    object_store_bucket_checkpoint: str
++    object_store_bucket_pretrained: str
++
++    object_store_credential_data: str
++    object_store_credential_checkpoint: str
++    object_store_credential_pretrained: str
++
++
++DefaultClusterConfig: ClusterConfig = ClusterConfig(
++    object_store_bucket_data="",
++    object_store_bucket_checkpoint="bucket-checkpoint",
++    object_store_bucket_pretrained="bucket-pretrained",
++    object_store_credential_data="credentials/data.secret",
++    object_store_credential_checkpoint="credentials/checkpoint.secret",
++    object_store_credential_pretrained="credentials/pretrained.secret",
++)
++
++
++def register_cluster():
++    cs = ConfigStore.instance()
++    cs.store(group="cluster", package="job.cluster", name="default", node=DefaultClusterConfig)
+diff --git a/cosmos_framework/configs/base/defaults/model_config.py b/cosmos_framework/configs/base/defaults/model_config.py
+index 05236b7..cd8fa2c 100644
+--- a/cosmos_framework/configs/base/defaults/model_config.py
++++ b/cosmos_framework/configs/base/defaults/model_config.py
+@@ -161,6 +161,11 @@ class OmniMoTModelConfig:
+     lora_rank: int = 16
+     lora_alpha: int = 32
+     lora_target_modules: str = "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
++    # Comma-separated param-name substrings that stay trainable alongside the
++    # adapters. Needed when a recipe's heads init fresh instead of loading (an
++    # action-policy recipe skip-loads its action heads, so they start random and
++    # must train). Empty = pure-LoRA, matching vision_sft_super.
++    lora_extra_trainable: str = ""
+ 
+     # Rectified flow configs
+     rectified_flow_training_config: RectifiedFlowTrainingConfig = RectifiedFlowTrainingConfig()
+diff --git a/cosmos_framework/configs/base/experiment/action/posttrain_config/action_policy_so101_edge.py b/cosmos_framework/configs/base/experiment/action/posttrain_config/action_policy_so101_edge.py
+new file mode 100644
+index 0000000..ead0e85
+--- /dev/null
++++ b/cosmos_framework/configs/base/experiment/action/posttrain_config/action_policy_so101_edge.py
+@@ -0,0 +1,174 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++"""``action_policy_so101_edge`` — Cosmos3-Edge SO-101 action-policy SFT recipe.
++
++Edge-tier sibling of ``action_policy_so101_nano``. Everything about the data
++path is shared and imported from that module — same ``SO101LeRobotDataset``
++(``joint_pos`` 6-D + ``use_state``, minmax-normalized against the SO-101 ``.pos``
++calibration bounds, ``concat_view`` front-over-overhead video, chunk_length 32),
++same ``PackingDataLoader`` / ``RankPartitionedDataLoader`` stack, same
++``keep_tasks`` subsets. Only the model tier and the checkpoint-loading policy
++differ.
++
++Why Edge instead of Nano on this box
++------------------------------------
++Edge is the *smaller* tier, not the more accurate one: on the public RoboLab
++suite the released DROID policies score Edge 22.9% vs Nano 36.8%. The reason to
++prefer it here is not the released number, it is what fits. Nano's backbone is
++Qwen3-VL-8B, which on one 96 GB GPU only trained as rank-16 LoRA on
++``*_moe_gen`` at global batch 32. Edge's backbone is Nemotron-2B-Dense-VL —
++roughly a quarter of the trainable surface — so the same GPU affords a much
++larger fraction of the model actually being updated, a bigger batch, and more
++epochs over the same 128 training episodes. On a dataset this small the binding
++constraint is adaptation capacity per unit of VRAM, not pretrained ceiling.
++
++Two Edge deltas fix latent mismatches in the Nano recipe
++--------------------------------------------------------
++* ``resolution``: ``EDGE_MODEL_CONFIG`` is natively ``"480"``, which matches the
++  480x640-per-camera SO-101 data. ``NANO_MODEL_CONFIG`` is ``"720"`` and the
++  SO-101 Nano recipe never overrode it, so training drew its flow-matching
++  ``shift`` from the 720 entry (10) while the dataloader emitted 480p
++  (``omni_mot_model.py`` picks ``shift[config.resolution]``). Edge gets the
++  correct ``shift=5``.
++* ``rectified_flow_training_config``: Edge ships ``loss_scale=10.0`` /
++  ``image_loss_scale=None`` (vs Nano's 1.0/1.0), which is the "vision
++  flow-matching weighted to match action loss" balance the Edge post-training
++  recipe calls for.
++
++Warm-started action heads
++-------------------------
++``action_policy_so101_nano`` initialises from the *base* ``nvidia/Cosmos3-Nano``,
++whose action heads carry no SO-101 signal, so it lists them in
++``keys_to_skip_loading`` and they start from random — the standard convention in
++the upstream DROID/LIBERO recipes.
++
++These recipes instead initialise from ``nvidia/Cosmos3-Edge-Policy-DROID``, a
++checkpoint that has *already* been post-trained into a manipulation policy, and
++deliberately keep its action heads out of ``keys_to_skip_loading``.
++
++That alone is **not enough**, and the reason is worth stating precisely because
++it is easy to get wrong. ``action2llm`` / ``llm2action`` are ``DomainAwareLinear``
++layers (``mot/domain_aware_linear.py``): their weights live in an
++``nn.Embedding(num_embodiment_domains, out*in)``, so every embodiment owns a
++private row. DROID is domain 8; SO-101 is domain 22. Measured on the released
++checkpoint (exported as ``action_proj_in`` / ``action_proj_out``)::
++
++    action_proj_in.fc.weight    row 8 = 10.67    row 22 = 6.44   (== every other row)
++    action_proj_in.bias.weight  row 8 =  1.56    row 22 = 0.000  (== every other row)
++
++Row 22 is still at ``xavier_uniform_`` init with an exactly-zero bias. So simply
++loading the DROID policy hands SO-101's action head nothing the base checkpoint
++would not have given it. The only part of the action path that transfers for
++free is ``action_modality_embed``, which is a single shared ``[hidden_size]``
++vector, not a per-domain table.
++
++``tools/transplant_domain.py`` closes that gap by copying row 8 into row 22
++before DCP conversion, so SO-101 starts from DROID's trained manipulation
++mapping. Both are single-arm absolute ``joint_pos`` policies padded into the same
++64-wide action space (DROID 7 joints + gripper, SO-101 5 joints + gripper), so
++the token<->hidden mapping is largely shared structure. Point
++``BASE_CHECKPOINT_PATH`` at the transplanted conversion to get the warm start;
++point it at the plain conversion for the un-transplanted control.
++
++Set ``SO101_EDGE_COLD_HEADS=1`` to fall back to the fresh-init convention
++entirely (and raise the action-head LR multipliers back to 5x, as in the Nano
++recipe) for an A/B.
++
++Usage (single GPU)::
++
++    bash examples/launch_sft_action_policy_so101_edge_focus5_multi_1gpu.sh
++
++See docs/so101_edge_posttrain.md for the full pipeline (DCP conversion of the
++Edge policy checkpoint, smoke run, export, serving and evaluation).
++"""
++
++import copy
++import os
++
++from hydra.core.config_store import ConfigStore
++
++from cosmos_framework.configs.base.experiment.action.posttrain_config.action_policy_so101_nano import (
++    SO101_FOCUS5_TASKS,
++    SO101_MULTI_TASK,
++    action_policy_so101_nano,
++)
++from cosmos_framework.configs.base.experiment.sft.models.edge_model_config import EDGE_MODEL_CONFIG
++
++cs = ConfigStore.instance()
++
++
++# Base checkpoint is Cosmos3-Edge-Policy-DROID, which ships trained action heads.
++# Keep them (see module docstring); skip only EMA and the LoRA adapters, which
++# never exist in a base checkpoint.
++_WARM_HEAD_SKIP_KEYS = [
++    "net_ema.",
++]
++
++# Opt-out: fresh-init the action heads exactly like the Nano recipe, for an
++# apples-to-apples comparison against the Nano baseline or when initialising
++# from the *base* nvidia/Cosmos3-Edge instead of the DROID policy.
++_COLD_HEAD_SKIP_KEYS = [
++    "net_ema.",
++    "action2llm",
++    "llm2action",
++    "action_modality_embed",
++    "action_pos_embed",
++]
++
++_COLD_HEADS = os.environ.get("SO101_EDGE_COLD_HEADS", "0").lower() in ("1", "true", "yes")
++
++
++def _make_edge_variant(name: str, *, keep_tasks=None, max_episodes_per_task=None, val_ratio=None):
++    """Derive an Edge-tier variant from the shared SO-101 Nano recipe.
++
++    Only the model tier and the checkpoint-loading policy change; the whole data
++    path is inherited so the two tiers cannot drift apart.
++    """
++    cfg = copy.deepcopy(action_policy_so101_nano)
++    cfg["job"]["name"] = name
++    cfg["model"]["config"] = copy.deepcopy(EDGE_MODEL_CONFIG)
++    cfg["checkpoint"]["keys_to_skip_loading"] = list(
++        _COLD_HEAD_SKIP_KEYS if _COLD_HEADS else _WARM_HEAD_SKIP_KEYS
++    )
++
++    dataset = cfg["dataloader_train"]["dataloader"]["datasets"]["so101"]["dataset"]
++    # Re-point the interpolation at the Edge model config now that it was replaced.
++    dataset["max_action_dim"] = "${model.config.max_action_dim}"
++    dataset["tokenizer_config"] = "${model.config.vlm_config.tokenizer}"
++    if keep_tasks is not None:
++        dataset["keep_tasks"] = keep_tasks
++    if max_episodes_per_task is not None:
++        dataset["max_episodes_per_task"] = max_episodes_per_task
++    if val_ratio is not None:
++        dataset["val_ratio"] = val_ratio
++    return cfg
++
++
++# Full SO-101 root, all instructions.
++action_policy_so101_edge = _make_edge_variant("action_policy_so101_edge")
++
++# Five single-object bin-placement instructions (97 episodes / 35,132 frames).
++action_policy_so101_edge_focus5 = _make_edge_variant(
++    "action_policy_so101_edge_focus5",
++    keep_tasks=SO101_FOCUS5_TASKS,
++    val_ratio=0.10,
++)
++
++# focus5 plus the one multi-object instruction, capped so it cannot swamp them.
++# This is the mix the Nano run converged on and the intended Edge launch target.
++action_policy_so101_edge_focus5_multi = _make_edge_variant(
++    "action_policy_so101_edge_focus5_multi",
++    keep_tasks=SO101_FOCUS5_TASKS + (SO101_MULTI_TASK,),
++    max_episodes_per_task=45,
++    val_ratio=0.10,
++)
++
++
++for _item in [
++    action_policy_so101_edge,
++    action_policy_so101_edge_focus5,
++    action_policy_so101_edge_focus5_multi,
++]:
++    _name = [k for k, v in globals().items() if v is _item][0]
++    cs.store(group="experiment", package="_global_", name=_name, node=_item)
+diff --git a/cosmos_framework/configs/base/experiment/action/posttrain_config/action_policy_so101_nano.py b/cosmos_framework/configs/base/experiment/action/posttrain_config/action_policy_so101_nano.py
+new file mode 100644
+index 0000000..775d133
+--- /dev/null
++++ b/cosmos_framework/configs/base/experiment/action/posttrain_config/action_policy_so101_nano.py
+@@ -0,0 +1,347 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++"""``action_policy_so101_nano`` — Cosmos3-Nano SO-101 action-policy SFT recipe.
++
++Mirrors the upstream reference ``action_policy_droid_nano`` /
++``action_policy_libero_nano`` recipes (same ``mot_fsdp`` + ``PackingDataLoader``
+++ ``RankPartitionedDataLoader`` stack, same action-head training/skip-loading
++convention), in this repo's current ``data.generator.action`` namespace (post
++``vfm`` -> ``generator`` rename), for a dataset that does not exist in either
++reference recipe: any schema-matching SO-101 LeRobot v3.0 dataset (e.g.
++``5hadytru/so101_bench_real_2``, ``5hadytru/so101_bench_sim_6``; SO-101,
++6-DOF single arm).
++
++Feeds ``SO101LeRobotDataset`` (``action_space='joint_pos'`` 6D + ``use_state``,
++minmax-normalized against SO-101's ``.pos`` calibration bounds, ``concat_view``
++front-over-overhead 480p video, chunk_length 32 — matching DROID's joint_pos
++config, the closest reference shape to a single-arm real/sim-robot embodiment)
++through ``ActionTransformPipeline``, and trains the generation + action heads
++from the public ``nvidia/Cosmos3-Nano`` base.
++
++Usage (1 node, 8 GPU)::
++
++    SO101_ROOT=/path/to/so101_bench_real_2 \\
++    BASE_CHECKPOINT_PATH=<Cosmos3-Nano DCP dir> \\
++    WAN_VAE_PATH=<Wan2.2_VAE.pth> \\
++    torchrun --nproc_per_node=8 -m cosmos_framework.scripts.train \\
++        --sft-toml examples/toml/sft_config/action_policy_so101_nano.toml
++
++See docs/so101_policy_finetune.md for the full pipeline (checkpoint
++conversion, --dryrun, export, serving via action_policy_server_robolab.py
++--domain-name so101 --arm-joint-dim 5, and evaluation via so101_bench).
++"""
++
++import copy
++
++from hydra.core.config_store import ConfigStore
++
++from cosmos_framework.configs.base.experiment.sft.models.nano_model_config import NANO_MODEL_CONFIG
++from cosmos_framework.data.generator.action.datasets.action_sft_dataset import get_action_so101_sft_dataset
++from cosmos_framework.data.generator.joint_dataloader import (
++    PackingDataLoader,
++    RankPartitionedDataLoader,
++)
++from cosmos_framework.utils.lazy_config import LazyCall as L
++from cosmos_framework.utils.lazy_config import LazyDict
++
++cs = ConfigStore.instance()
++
++
++action_policy_so101_nano = LazyDict(
++    dict(
++        defaults=[
++            {"override /model": "mot_fsdp"},
++            {"override /data_train": None},
++            {"override /data_val": None},
++            # FusedAdam with fp32 master_weights + eps 1e-8 (bf16 params + eps 1e-6
++            # diverged on the action loss in both DROID and LIBERO reference runs).
++            {"override /optimizer": "fusedadamw"},
++            {"override /scheduler": "lambdalinear"},  # linear LR decay
++            {"override /checkpoint": "s3"},
++            {"override /callbacks": ["basic", "optimization", "job_monitor"]},
++            {"override /ema": "power"},
++            {"override /tokenizer": "wan2pt2_tokenizer"},
++            {"override /sound_tokenizer": None},
++            {"override /vlm_config": None},
++            {"override /ckpt_type": "dcp"},
++            "_self_",
++        ],
++        job=dict(
++            project="cosmos3_action",
++            group="action_sft",
++            name="action_policy_so101_nano",
++            wandb_mode="disabled",
++        ),
++        model=dict(
++            config=copy.deepcopy(NANO_MODEL_CONFIG),  # action_gen=True, max_action_dim=64
++        ),
++        optimizer=dict(
++            betas=[0.9, 0.99],
++            eps=1.0e-08,
++            fused=True,  # popped by build_optimizer for FusedAdam (fused by construction)
++            # Train the generation + action heads.
++            keys_to_select=[
++                "moe_gen",
++                "time_embedder",
++                "vae2llm",
++                "llm2vae",
++                "action2llm",
++                "llm2action",
++                "action_modality_embed",
++            ],
++            lr=5.0e-05,  # LIBERO-10-scale LR (SO-101's 4367 episodes is much closer to
++            # libero_10 than to DROID's full dataset; DROID's lr=2e-4 was tuned for
++            # global batch 8192).
++            lr_multipliers={
++                "action2llm": 5.0,
++                "llm2action": 5.0,
++                "action_modality_embed": 5.0,
++            },
++            optimizer_type="FusedAdam",
++            weight_decay=0.05,
++        ),
++        scheduler=dict(
++            lr_scheduler_type="LambdaLinear",
++            cycle_lengths=[100],  # smoke: 100 iters (real run sets via TOML)
++            f_max=[1.0],
++            f_min=[0.0],
++            f_start=[1.0e-06],
++            verbosity_interval=0,
++            warm_up_steps=[0],  # smoke (real run sets via TOML)
++        ),
++        trainer=dict(
++            distributed_parallelism="fsdp",
++            grad_accum_iter=1,  # real run sets via TOML
++            logging_iter=1,
++            max_iter=100,  # smoke
++            max_val_iter=None,
++            run_validation=False,
++            run_validation_on_start=False,
++            save_zero_checkpoint=False,
++            seed=42,
++            timeout_period=999999999,
++            validation_iter=100,
++            compile_config=dict(recompile_limit=8, use_duck_shape=False),
++            cudnn=dict(benchmark=True, deterministic=False),
++            ddp=dict(broadcast_buffers=True, find_unused_parameters=False, static_graph=True),
++            grad_scaler_args=dict(enabled=False),
++            callbacks=dict(
++                dataloader_speed=dict(every_n=100, save_s3=False, step_size=1),
++                device_monitor=dict(
++                    every_n=200, log_memory_detail=True, save_s3=False, step_size=1, upload_every_n_mul=5
++                ),
++                grad_clip=dict(clip_norm=1.0, force_finite=True),
++                heart_beat=dict(every_n=200, save_s3=False, step_size=1, update_interval_in_minute=20),
++                iter_speed=dict(every_n=1, hit_thres=50, save_s3=False, save_s3_every_log_n=500),
++                low_precision=dict(update_iter=1),
++                manual_gc=dict(every_n=5, gc_level=1, warm_up=1),
++                param_count=dict(save_s3=False),
++                skip_nan_step=dict(max_consecutive_nan=100),
++                training_stats=dict(log_freq=100),
++            ),
++        ),
++        checkpoint=dict(
++            broadcast_via_filesystem=False,
++            dcp_async_mode_enabled=False,
++            enable_gcs_patch_in_boto3=True,
++            keys_not_to_resume=[],
++            # Skip net_ema. (EMA warm-starts from net, see dcp.py) and the action
++            # heads, so they init fresh from the base — matching both DROID's and
++            # LIBERO's reference recipes: the public Cosmos3-Nano base has no
++            # SO-101-trained action heads either.
++            keys_to_skip_loading=[
++                "net_ema.",
++                "action2llm",
++                "llm2action",
++                "action_modality_embed",
++                "action_pos_embed",
++            ],
++            load_ema_to_reg=False,
++            load_path="???",  # Cosmos3-Nano DCP dir; supply via TOML/env
++            load_training_state=False,
++            only_load_scheduler_state=False,
++            save_iter=100,
++            strict_resume=False,  # base init: tolerate key set differences
++            verbose=True,
++            hf_export=dict(
++                enabled=False,
++                export_every_n=1,
++                hf_repo_id=None,
++                upload_to_object_store=dict(bucket="", credentials="", enabled=False),
++            ),
++            jit=dict(device="cuda", dtype="bfloat16", enabled=False, input_shape=None, strict=True),
++            load_from_object_store=dict(bucket="", credentials="", enabled=False),
++            save_to_object_store=dict(bucket="", credentials="", enabled=False),
++        ),
++        dataloader_train=L(PackingDataLoader)(
++            audio_sample_rate=48000,
++            dataset_name="action_so101",
++            max_samples_per_batch=32,  # per rank; real run sets parallelism via TOML
++            max_sequence_length=None,  # None disables token packing (TOML can't express null)
++            patch_spatial=2,
++            sound_latent_fps=0,
++            tokenizer_spatial_compression_factor=16,
++            tokenizer_temporal_compression_factor=4,
++            dataloader=L(RankPartitionedDataLoader)(
++                batch_size=1,
++                in_order=False,
++                num_workers=8,  # host-CPU-bound; lower via CLI on smaller hosts
++                persistent_workers=True,
++                pin_memory=True,
++                prefetch_factor=4,
++                sampler=None,
++                # Shuffling is handled by the dataset (iterable_shuffle=True below):
++                # ActionIterableShuffleDataset streams rank x worker-sharded, episode-order-
++                # shuffled, sequential-within-episode (see action_sft_dataset.py).
++                datasets=dict(
++                    so101=dict(
++                        ratio=1,
++                        dataset=L(get_action_so101_sft_dataset)(
++                            # Local LeRobot v3.0 dir for 5hadytru/so101_bench_real_2. Use:
++                            #   uvx hf@latest download --repo-type dataset 5hadytru/so101_bench_real_2 \\
++                            #       --local-dir <dir>   # SO101_ROOT=<dir>
++                            root="${oc.env:SO101_ROOT}",
++                            fps=30.0,
++                            chunk_length=32,
++                            mode="wam",
++                            use_state=True,
++                            action_normalization="minmax",
++                            val_ratio=0.01,
++                            iterable_shuffle=True,
++                            episode_shuffle_seed=42,
++                            resolution="480",  # dataset is native 480x640 per camera
++                            max_action_dim="${model.config.max_action_dim}",
++                            cfg_dropout_rate=0.1,
++                            tokenizer_config="${model.config.vlm_config.tokenizer}",
++                            format_prompt_as_json=False,
++                        ),
++                    ),
++                ),
++            ),
++        ),
++        dataloader_val=None,
++        upload_reproducible_setup=False,
++    ),
++    flags={"allow_objects": True},
++)
++
++
++# ---------------------------------------------------------------------------
++# Focused 5-instruction variant.
++#
++# The full so101_bench_sim_6 root is 2228 episodes over 748 instructions, but
++# support per instruction is thin: the median instruction has 3 episodes, and
++# 89.5% of frames belong to the "Place ... in the plastic bin" family (875 of
++# them under the single string "Place each object in the plastic bin"). Training
++# 6000 iters at global batch 32 over 1.25M frames covers 0.15 of ONE epoch, so
++# no instruction is ever seen enough times to learn its grasp.
++#
++# This variant restricts the dataset to the five single-object bin-placement
++# instructions that have the most episodes (97 total, 35,132 frames). One epoch
++# is then 1098 iters instead of 39,027 -- 13.3 h instead of 20 days -- which
++# makes multi-epoch training and same-day iteration possible on one GPU.
++# val_ratio 0.10 holds out ~10 episodes for honest eval.
++# ---------------------------------------------------------------------------
++
++SO101_FOCUS5_TASKS = (
++    "Place the green shoes in the plastic bin",       # 25 episodes
++    "Place the cardboard box in the plastic bin",     # 18
++    "Place the altoids container in the plastic bin",  # 18
++    "Place the flower pot in the plastic bin",        # 18
++    "Place the cooking spoon in the plastic bin",     # 18
++)
++
++action_policy_so101_nano_focus5 = copy.deepcopy(action_policy_so101_nano)
++_focus_ds = action_policy_so101_nano_focus5["dataloader_train"]["dataloader"]["datasets"]["so101"]["dataset"]
++_focus_ds["keep_tasks"] = SO101_FOCUS5_TASKS
++_focus_ds["val_ratio"] = 0.10
++
++
++# ---------------------------------------------------------------------------
++# focus5 + clutter: the same five single-object instructions plus the dataset's
++# one multi-object instruction, capped so it cannot swamp them.
++#
++# Motivation: the focus5 policy scores 0/53 on cluttered 4-object scenes, and
++# the training set contains no cluttered scenes for those instructions at all.
++# `Place each object in the plastic bin` is 875 episodes / 693,885 frames of
++# exactly that, already present in the dataset and excluded by keep_tasks.
++#
++# Uncapped it is 95% of the mix and one epoch becomes ~16,800 iterations
++# (~31 days for 4 epochs). max_episodes_per_task=45 caps it to roughly the
++# frame count of the five single-object instructions combined -- a ~50/50 split,
++# 142 episodes, ~1,630 iterations per epoch. The cap is a no-op for the single
++# object instructions, whose largest is 25 episodes.
++SO101_MULTI_TASK = "Place each object in the plastic bin"
++
++action_policy_so101_nano_focus5_multi = copy.deepcopy(action_policy_so101_nano)
++_multi_ds = action_policy_so101_nano_focus5_multi["dataloader_train"]["dataloader"]["datasets"]["so101"]["dataset"]
++_multi_ds["keep_tasks"] = SO101_FOCUS5_TASKS + (SO101_MULTI_TASK,)
++_multi_ds["max_episodes_per_task"] = 45
++_multi_ds["val_ratio"] = 0.10
++
++
++# ---------------------------------------------------------------------------
++# Every single-object bin-placement instruction, for continued training.
++#
++# The five focus5 instructions are 97 of the dataset's 399 single-object
++# "Place the X in the plastic bin" episodes (34 instructions, 149,945 frames).
++# The other 302 teach the same grasp-lift-place skill on 29 more objects and
++# more object placements, and use the same single-object scene composition as
++# the So101Bench-Bin-v0 eval. Intended to warm-start from the merged focus5
++# checkpoint (iteration 3750), keeping its trained action heads.
++#
++# RankPartitionedDataLoader assigns each rank to exactly one dataset, so the
++# focus5 instructions cannot be upweighted with a second entry on one GPU; they
++# are ~24% of the episodes here.
++SO101_SINGLE_BIN_TASKS = (
++    "Place the altoids container in the plastic bin",
++    "Place the black glasses in the plastic bin",
++    "Place the black pen in the plastic bin",
++    "Place the black screwdriver in the plastic bin",
++    "Place the black tape in the plastic bin",
++    "Place the blue bowl in the plastic bin",
++    "Place the blue pliers in the plastic bin",
++    "Place the blue scissors in the plastic bin",
++    "Place the bowl in the plastic bin",
++    "Place the cardboard box in the plastic bin",
++    "Place the clip in the plastic bin",
++    "Place the cooking spoon in the plastic bin",
++    "Place the eraser in the plastic bin",
++    "Place the flower pot in the plastic bin",
++    "Place the glasses in the plastic bin",
++    "Place the green clip in the plastic bin",
++    "Place the green shoes in the plastic bin",
++    "Place the grey toy car in the plastic bin",
++    "Place the grey wires in the plastic bin",
++    "Place the pen in the plastic bin",
++    "Place the pink eraser in the plastic bin",
++    "Place the pliers in the plastic bin",
++    "Place the red tape in the plastic bin",
++    "Place the scissors in the plastic bin",
++    "Place the screwdriver in the plastic bin",
++    "Place the shoes in the plastic bin",
++    "Place the silver glasses in the plastic bin",
++    "Place the tape in the plastic bin",
++    "Place the toy car in the plastic bin",
++    "Place the white pen in the plastic bin",
++    "Place the wires in the plastic bin",
++    "Place the yellow screwdriver in the plastic bin",
++    "Place the yellow toy car in the plastic bin",
++    "Place the yellow wires in the plastic bin",
++)
++
++action_policy_so101_nano_single_bin = copy.deepcopy(action_policy_so101_nano)
++_single_ds = action_policy_so101_nano_single_bin["dataloader_train"]["dataloader"]["datasets"]["so101"]["dataset"]
++_single_ds["keep_tasks"] = SO101_SINGLE_BIN_TASKS
++_single_ds["val_ratio"] = 0.05
++
++
++for _item in [
++    action_policy_so101_nano,
++    action_policy_so101_nano_focus5,
++    action_policy_so101_nano_focus5_multi,
++    action_policy_so101_nano_single_bin,
++]:
++    _name = [k for k, v in globals().items() if v is _item][0]
++    cs.store(group="experiment", package="_global_", name=_name, node=_item)
+diff --git a/cosmos_framework/configs/toml_config/sft_config.py b/cosmos_framework/configs/toml_config/sft_config.py
+index 04d0efb..dcf7937 100644
+--- a/cosmos_framework/configs/toml_config/sft_config.py
++++ b/cosmos_framework/configs/toml_config/sft_config.py
+@@ -375,6 +375,18 @@ class ModelConfig(BaseModel):
+             "adapter. Defaults target the four MoE-gen projection matrices."
+         ),
+     )
++    lora_extra_trainable: str = Field(
++        default="",
++        description=(
++            "Comma-separated param-name substrings that stay trainable "
++            "alongside the LoRA adapters. LoRA injection freezes every "
++            "non-adapter param, which is wrong for any head that "
++            "initializes fresh rather than loading — an action-policy recipe "
++            "skip-loads action2llm/llm2action/action_modality_embed, so "
++            "they start from random init and MUST train. Empty (the "
++            "default) = pure-LoRA, matching vision_sft_super. Skipped on VLM."
++        ),
++    )
+ 
+     ema: EMAConfig = Field(default_factory=EMAConfig)
+     parallelism: ParallelismConfig = Field(default_factory=ParallelismConfig)
+diff --git a/cosmos_framework/configs/toml_config/toml_config_helper.py b/cosmos_framework/configs/toml_config/toml_config_helper.py
+index 4d1535c..dbe59b2 100644
+--- a/cosmos_framework/configs/toml_config/toml_config_helper.py
++++ b/cosmos_framework/configs/toml_config/toml_config_helper.py
+@@ -76,6 +76,7 @@ PATH_REMAPS: dict[str, dict[tuple[str, ...], "tuple[str, ...] | None"]] = {
+         ("model", "lora_rank"): None,
+         ("model", "lora_alpha"): None,
+         ("model", "lora_target_modules"): None,
++        ("model", "lora_extra_trainable"): None,
+         ("model", "tokenizer"): None,                                          # blocks model.tokenizer.*
+         ("dataloader_train", "seed"): None,
+         ("optimizer", "eps"): None,                                            # VLM_OPTIMIZER_KWARGS has no eps field
+diff --git a/cosmos_framework/data/generator/action/datasets/__init__.py b/cosmos_framework/data/generator/action/datasets/__init__.py
+index 140904c..f447a80 100644
+--- a/cosmos_framework/data/generator/action/datasets/__init__.py
++++ b/cosmos_framework/data/generator/action/datasets/__init__.py
+@@ -20,6 +20,7 @@ from cosmos_framework.data.generator.action.datasets.human_hand_pose_lerobot_dat
+ from cosmos_framework.data.generator.action.datasets.libero_lerobot_dataset import LIBEROLeRobotDataset
+ from cosmos_framework.data.generator.action.datasets.robomind_franka_dataset import RoboMINDFrankaDataset
+ from cosmos_framework.data.generator.action.datasets.robomind_ur_dataset import RoboMINDURDataset
++from cosmos_framework.data.generator.action.datasets.so101_lerobot_dataset import SO101LeRobotDataset
+ from cosmos_framework.data.generator.action.datasets.umi_lerobot_dataset import UMILeRobotDataset
+ 
+ __all__ = [
+@@ -33,5 +34,6 @@ __all__ = [
+     "LIBEROLeRobotDataset",
+     "RoboMINDFrankaDataset",
+     "RoboMINDURDataset",
++    "SO101LeRobotDataset",
+     "UMILeRobotDataset",
+ ]
+diff --git a/cosmos_framework/data/generator/action/datasets/action_sft_dataset.py b/cosmos_framework/data/generator/action/datasets/action_sft_dataset.py
+index 47c9541..b48d2e0 100644
+--- a/cosmos_framework/data/generator/action/datasets/action_sft_dataset.py
++++ b/cosmos_framework/data/generator/action/datasets/action_sft_dataset.py
+@@ -22,6 +22,7 @@ from torch.utils.data import Dataset, IterableDataset, get_worker_info
+ from cosmos_framework.data.generator.action.datasets.droid_merged_lerobot_dataset import DROIDMergedLeRobotDataset
+ from cosmos_framework.data.generator.action.datasets.droid_lerobot_dataset import DROIDLeRobotDataset
+ from cosmos_framework.data.generator.action.datasets.libero_lerobot_dataset import LIBEROLeRobotDataset
++from cosmos_framework.data.generator.action.datasets.so101_lerobot_dataset import SO101LeRobotDataset
+ from cosmos_framework.data.generator.action.transforms import ActionTransformPipeline
+ 
+ 
+@@ -280,3 +281,80 @@ def get_action_libero_sft_dataset(
+     if iterable_shuffle:
+         return ActionIterableShuffleDataset(sft, seed=episode_shuffle_seed)
+     return sft
++
++
++def get_action_so101_sft_dataset(
++    *,
++    root: str,
++    fps: float = 30.0,
++    chunk_length: int = 32,
++    mode: str = "wam",
++    use_state: bool = True,
++    action_normalization: str | None = "minmax",
++    split: str = "train",
++    val_ratio: float = 0.01,
++    seed: int = 0,
++    resolution: str | int = "480",
++    max_action_dim: int = 64,
++    tokenizer_config: dict | None = None,
++    cfg_dropout_rate: float = 0.1,
++    append_viewpoint_info: bool = True,
++    append_duration_fps_timestamps: bool = True,
++    append_resolution_info: bool = True,
++    append_idle_frames: bool = False,
++    format_prompt_as_json: bool = False,
++    iterable_shuffle: bool = False,
++    episode_shuffle_seed: int = 42,
++    keep_tasks: tuple[str, ...] | None = None,
++    max_episodes_per_task: int | None = None,
++) -> Dataset:
++    """Build the SO-101 action SFT dataset: ``action_space="joint_pos"`` (6D) +
++    ``use_state`` (row 0 = current state), ``concat_view`` front-over-overhead
++    video, chunk_length 32, minmax-normalized against SO-101's ``.pos``
++    calibration bounds -- mirrors DROID's ``joint_pos``/``use_state`` recipe,
++    the closest reference shape to a single-arm real/sim-robot embodiment.
++
++    Reads ``root`` (a local LeRobot v3.0 dir, schema-matching
++    ``5hadytru/so101_bench_real_2`` / ``5hadytru/so101_bench_sim_6``) as a
++    single flat dataset via parquet + video, windowed per-episode.
++    """
++    dataset: Dataset = SO101LeRobotDataset(
++        root=root,
++        fps=fps,
++        chunk_length=chunk_length,
++        mode=mode,
++        use_state=use_state,
++        action_normalization=action_normalization,
++        split=split,
++        val_ratio=val_ratio,
++        seed=seed,
++        keep_tasks=keep_tasks,
++        max_episodes_per_task=max_episodes_per_task,
++    )
++    transform = ActionTransformPipeline(
++        tokenizer_config=tokenizer_config,
++        cfg_dropout_rate=cfg_dropout_rate,
++        max_action_dim=max_action_dim,
++        append_viewpoint_info=append_viewpoint_info,
++        append_duration_fps_timestamps=append_duration_fps_timestamps,
++        append_resolution_info=append_resolution_info,
++        append_idle_frames=append_idle_frames,
++        format_prompt_as_json=format_prompt_as_json,
++    )
++    sft = ActionSFTDataset(dataset, transform, resolution)
++    if iterable_shuffle:
++        return ActionIterableShuffleDataset(sft, seed=episode_shuffle_seed)
++    return sft
++
++
++# Embodiment tags read by cosmos_framework.scripts.export_model
++# (_build_edge_policy_metadata) to fill the `policy.domain_name` field of an Edge
++# export's checkpoint.json. The resolver probes the dataset target for
++# `EMBODIMENT_TYPE`; these factories are functions rather than classes, so the
++# attribute is attached here. Values must match cosmos_framework.data.generator
++# .action.domain_utils (so101 -> domain 22, droid_lerobot -> domain 8).
++get_action_so101_sft_dataset.EMBODIMENT_TYPE = "so101"
++try:
++    get_action_droid_sft_dataset.EMBODIMENT_TYPE = "droid_lerobot"
++except NameError:  # factory not defined in this build
++    pass
+diff --git a/cosmos_framework/data/generator/action/datasets/so101_lerobot_dataset.py b/cosmos_framework/data/generator/action/datasets/so101_lerobot_dataset.py
+new file mode 100644
+index 0000000..0bd09f8
+--- /dev/null
++++ b/cosmos_framework/data/generator/action/datasets/so101_lerobot_dataset.py
+@@ -0,0 +1,291 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++"""SO-101 LeRobot dataset (joint-position action policy).
++
++Mirrors ``LIBEROLeRobotDataset``: reads the LeRobot parquet directly, windows
++by frame index, and decodes video at each frame's REAL timestamp (FPS-agnostic;
++``fps`` is metadata for ``conditioning_fps`` / prompt duration only). Unlike
++LIBERO, there is no relative-pose math -- a schema-matching SO-101 LeRobot v3.0
++dataset's ``action`` column is already the per-frame ABSOLUTE joint_pos target
++``[shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]``
++in LeRobot ``.pos`` units (verified against ``5hadytru/so101_bench_real_2`` and
++``5hadytru/so101_bench_sim_6``'s own ``meta/info.json``).
++
++Action layout follows DROID's ``action_space="joint_pos", use_state=True``
++convention (the reference ``action_policy_droid_nano`` recipe): the returned
++``action`` tensor is ``chunk_length + 1`` rows -- row 0 is the CURRENT
++``observation.state`` (what ``action_policy_server_robolab.py`` sends as
++``action[0]`` when ``--use-state`` is on), rows 1..chunk_length are the future
++target actions. This makes the video (``chunk_length + 1`` frames) and action
++tensors frame-aligned 1:1, and matches the RoboLab server's serving-side
++layout instead of leaving the model to guess the convention from an unprefixed
++``chunk_length``-row action tensor.
++
++Reading parquet/video directly (rather than
++``lerobot.datasets.lerobot_dataset.LeRobotDataset``) also sidesteps
++``so101_bench_real_2``'s missing ``codebase_version`` git tag, which otherwise
++fails ``LeRobotDataset``'s default revision resolution with
++``RevisionNotFoundError`` -- no ``revision="main"`` pin needed here.
++"""
++
++from __future__ import annotations
++
++import random
++from pathlib import Path
++from typing import Any, Literal
++
++import numpy as np
++import pyarrow.parquet as pq
++import torch
++
++from cosmos_framework.data.generator.action.action_spec import ActionSpec, Gripper, Joint, build_action_spec
++from cosmos_framework.data.generator.action.datasets.base_dataset import ActionBaseDataset
++from cosmos_framework.utils import log
++
++_ACTION_FEATURE = "action"
++_STATE_FEATURE = "observation.state"
++_IMAGE_FEATURES = ("observation.images.front", "observation.images.overhead")
++_NORMALIZERS_DIR = Path(__file__).parent.parent / "normalizer_stats"
++Split = Literal["train", "val", "valid", "validation", "eval", "test", "full"]
++
++
++class SO101LeRobotDataset(ActionBaseDataset):
++    """SO-101 (6-DOF single-arm) joint_pos action-policy dataset.
++
++    6D absolute joint_pos actions, ``concat_view`` (front-over-overhead)
++    video, minmax-normalized against SO-101's LeRobot ``.pos`` calibration
++    convention (5 body joints on ``[-100, 100]``, gripper on ``[0, 100]`` --
++    matches ``so101_bench``'s own ``SO101JointMapper`` /
++    ``REAL_SO101_CALIBRATION`` convention for the real robot).
++    """
++
++    def __init__(
++        self,
++        root: str,
++        fps: float = 30.0,
++        chunk_length: int = 32,
++        mode: str = "wam",
++        tolerance_s: float = 1e-4,
++        use_state: bool = True,
++        action_normalization: str | None = "minmax",
++        split: Split = "train",
++        val_ratio: float = 0.01,
++        seed: int = 0,
++        sample_stride: int = 1,
++        keep_tasks: tuple[str, ...] | None = None,
++        max_episodes_per_task: int | None = None,
++    ) -> None:
++        split = split.lower().strip()  # type: ignore[assignment]
++        if split not in {"train", "val", "valid", "validation", "eval", "test", "full"}:
++            raise ValueError(f"Unsupported split={split!r}. Use train/val/full.")
++
++        super().__init__(
++            root=root,
++            domain_name="so101",
++            fps=fps,
++            chunk_length=chunk_length,
++            mode=mode,
++            pose_convention="backward_framewise",  # unused for absolute joint_pos; satisfies the base assert
++            tolerance_s=tolerance_s,
++            viewpoint="concat_view",
++            action_normalization=action_normalization,
++            sample_stride=sample_stride,
++        )
++        self._use_state = use_state
++
++        # Compact, lazy frame index (mirrors LIBEROLeRobotDataset / DROIDLeRobotDataset):
++        # read only the columns the sample builder needs into contiguous arrays,
++        # ordered by global frame index, so DataLoader worker forks share them
++        # copy-on-write.
++        index_parts, episode_parts, task_parts, ts_parts, action_parts, state_parts = [], [], [], [], [], []
++        for path in sorted((self._root / "data").glob("chunk-*/file-*.parquet")):
++            table = pq.read_table(
++                path, columns=["index", "episode_index", "task_index", "timestamp", _ACTION_FEATURE, _STATE_FEATURE]
++            )
++            index_parts.append(table["index"].to_numpy())
++            episode_parts.append(table["episode_index"].to_numpy())
++            task_parts.append(table["task_index"].to_numpy())
++            ts_parts.append(table["timestamp"].to_numpy())
++            action_parts.append(np.asarray(table[_ACTION_FEATURE].to_pylist(), dtype=np.float32))
++            state_parts.append(np.asarray(table[_STATE_FEATURE].to_pylist(), dtype=np.float32))
++        if not index_parts:
++            raise FileNotFoundError(f"No data parquet found under {self._root / 'data'}.")
++        order = np.argsort(np.concatenate(index_parts).astype(np.int64), kind="stable")
++        self._row_episode = np.concatenate(episode_parts).astype(np.int64)[order]
++        self._row_task = np.concatenate(task_parts).astype(np.int64)[order]
++        self._row_timestamp = np.concatenate(ts_parts).astype(np.float64)[order]
++        self._row_action = np.concatenate(action_parts, axis=0).astype(np.float32)[order]
++        self._row_state = np.concatenate(state_parts, axis=0).astype(np.float32)[order]
++
++        assert np.all(np.diff(self._row_episode) >= 0), "episode_index not contiguous after sorting by frame index"
++        ep_vals, ep_starts, ep_counts = np.unique(self._row_episode, return_index=True, return_counts=True)
++
++        # Optional task-focus filter: keep only episodes whose instruction is in
++        # ``keep_tasks``. Applied BEFORE the train/val split so the held-out val
++        # episodes are drawn from the same focused pool the model trains on.
++        if keep_tasks:
++            wanted = {str(t) for t in keep_tasks}
++            ep_task = self._row_task[ep_starts]
++            sel = np.array([self._tasks.get(int(t), "") in wanted for t in ep_task], dtype=bool)
++            if not sel.any():
++                raise ValueError(
++                    f"keep_tasks matched no episodes. Wanted {sorted(wanted)}; "
++                    f"dataset has {len(set(self._tasks.values()))} distinct task strings."
++                )
++            ep_vals, ep_starts, ep_counts = ep_vals[sel], ep_starts[sel], ep_counts[sel]
++            log.info(f"SO-101: keep_tasks kept {int(sel.sum())} episodes across {len(wanted)} instructions")
++
++        # Optional per-instruction episode cap, applied AFTER keep_tasks and
++        # BEFORE the split. Without it a single dense instruction dominates:
++        # `Place each object in the plastic bin` alone is 875 episodes /
++        # 693,885 frames against 97 / 35,132 for the five single-object
++        # instructions, which would push one epoch from ~900 to ~16,800
++        # iterations and re-create the dilution the focused set exists to avoid.
++        # Selection is by ascending episode index -- deterministic, identical on
++        # every rank, and independent of `seed` so the train/val split stays the
++        # only source of randomness.
++        if max_episodes_per_task:
++            ep_task = self._row_task[ep_starts]
++            order_by_ep = np.argsort(ep_vals, kind="stable")
++            seen: dict[int, int] = {}
++            take = np.zeros(len(ep_vals), dtype=bool)
++            for i in order_by_ep:
++                task_id = int(ep_task[i])
++                n = seen.get(task_id, 0)
++                if n < max_episodes_per_task:
++                    take[i] = True
++                    seen[task_id] = n + 1
++            ep_vals, ep_starts, ep_counts = ep_vals[take], ep_starts[take], ep_counts[take]
++            capped = {self._tasks.get(k, str(k))[:40]: v for k, v in seen.items()}
++            log.info(
++                f"SO-101: max_episodes_per_task={max_episodes_per_task} kept "
++                f"{int(take.sum())} episodes: {capped}"
++            )
++
++        # Deterministic per-episode train/val split (seeded; same on every rank).
++        keep = self._split_episode_ids(ep_vals.tolist(), split, val_ratio, seed)
++        kept = np.array([int(v) in keep for v in ep_vals], dtype=bool)
++        self._ep_vals = ep_vals.astype(np.int64)[kept]
++        self._ep_starts = ep_starts.astype(np.int64)[kept]
++        kept_counts = ep_counts.astype(np.int64)[kept]
++        # Within-episode windows only: a window needs chunk_length + 1 frames
++        # (state/video anchor frame + chunk_length future action/video frames),
++        # so total - n_kept_episodes * chunk_length valid starts.
++        self._valid_cum = np.cumsum(np.maximum(0, kept_counts - self._chunk_length)).astype(np.int64)
++
++        log.info(
++            f"Loaded SO-101 dataset root={self._root} split={split!r} fps={self._fps} "
++            f"kept_episodes={len(self._ep_vals)}/{len(ep_vals)} "
++            f"valid_indices={int(self._valid_cum[-1]) if self._valid_cum.size else 0}"
++        )
++
++    # ---- spec / dims -------------------------------------------------------
++
++    @property
++    def action_dim(self) -> int:
++        return 6
++
++    def _action_spec(self) -> ActionSpec:
++        return build_action_spec(Joint(n=5, label="joint"), Gripper())
++
++    @classmethod
++    def _stats_path(cls) -> Path:
++        return _NORMALIZERS_DIR / "so101_lerobot_stats.json"
++
++    # ---- index helpers -----------------------------------------------------
++
++    @staticmethod
++    def _split_episode_ids(ep_ids: list[int], split: str, val_ratio: float, seed: int) -> set[int]:
++        if split == "full":
++            return set(int(v) for v in ep_ids)
++        if not (0.0 < val_ratio < 1.0):
++            raise ValueError(f"val_ratio must be in (0, 1), got {val_ratio}.")
++        n_val = max(1, int(round(len(ep_ids) * val_ratio)))
++        rng = random.Random(seed)  # identical selection on every rank
++        val = set(int(v) for v in rng.sample(list(ep_ids), n_val))
++        if split == "train":
++            return set(int(v) for v in ep_ids) - val
++        return val  # val/valid/validation/eval/test
++
++    def __len__(self) -> int:
++        return int(self._valid_cum[-1]) if self._valid_cum.size else 0
++
++    def get_shuffle_blocks(self) -> list[tuple[int, int]]:
++        """Per-episode ``(start, length)`` flat-index blocks for
++        ``ActionIterableShuffleDataset`` (shuffle block ORDER + shard across
++        ranks, sequential within a block)."""
++        blocks: list[tuple[int, int]] = []
++        prev = 0
++        for c in np.asarray(self._valid_cum).tolist():
++            c = int(c)
++            if c > prev:
++                blocks.append((prev, c - prev))
++            prev = c
++        return blocks
++
++    # ---- sample build ------------------------------------------------------
++
++    def __getitem__(self, idx: int) -> dict[str, Any]:
++        # Resample a different valid window if a frame fails to decode (bounded retries).
++        n = len(self)
++        last_err: Exception | None = None
++        for _attempt in range(8):
++            try:
++                return self._build_item(idx)
++            except Exception as e:  # noqa: BLE001 — skip past undecodable frames
++                last_err = e
++                log.warning(f"SO-101: sample idx={idx} failed to load ({type(e).__name__}: {e}); resampling")
++                if n > 0:
++                    idx = random.randint(0, n - 1)
++        raise RuntimeError(f"SO-101: failed to load a sample after 8 resamples; last error: {last_err}")
++
++    def _build_item(self, idx: int) -> dict[str, Any]:
++        mode = self._choose_mode()
++        idx = int(idx)
++        ep = int(np.searchsorted(self._valid_cum, idx, side="right"))
++        prev = int(self._valid_cum[ep - 1]) if ep > 0 else 0
++        start = int(self._ep_starts[ep]) + (idx - prev)
++        episode_index = int(self._ep_vals[ep])
++        episode = self._episodes[episode_index]
++
++        stop = start + self._chunk_length + 1
++        timestamps = [float(self._row_timestamp[j]) for j in range(start, stop)]
++        video = self._load_video(episode, timestamps)
++
++        action_future = torch.from_numpy(np.ascontiguousarray(self._row_action[start : start + self._chunk_length]))
++        action_future = action_future.float()  # [chunk_length, 6] future joint_pos targets
++        if self._use_state:
++            initial_state = torch.from_numpy(np.ascontiguousarray(self._row_state[start])).float()  # [6]
++            action = torch.cat([initial_state.unsqueeze(0), action_future], dim=0)  # [chunk_length+1, 6]
++        else:
++            action = action_future
++
++        task = self._tasks[int(self._row_task[start])]
++        ai_caption = random.choice([p.strip() for p in task.split(" | ") if p.strip()] or [task])
++
++        return self._build_result(
++            mode=mode,
++            video=video,
++            action=action,
++            ai_caption=ai_caption,
++            additional_view_description=(
++                "The top half is from the front-facing wrist camera. "
++                "The bottom half is from the fixed overhead camera."
++            ),
++        )
++
++    def _load_video(self, episode: dict[str, Any], timestamps: list[float]) -> torch.Tensor:
++        # lerobot is a heavy, optional ("train" extra) dependency; import lazily.
++        from lerobot.datasets.video_utils import decode_video_frames
++
++        frames_by_view = {}
++        for key in _IMAGE_FEATURES:
++            from_ts = float(episode.get(f"videos/{key}/from_timestamp", 0.0))
++            frames_by_view[key] = decode_video_frames(
++                self._video_path(episode, key),
++                [from_ts + ts for ts in timestamps],
++                self._tolerance_s,
++            )  # [T,C,H,W] in [0, 1]
++        # front (wrist-equivalent) over overhead -> [T,C,2H,W].
++        return torch.cat([frames_by_view[_IMAGE_FEATURES[0]], frames_by_view[_IMAGE_FEATURES[1]]], dim=-2)
+diff --git a/cosmos_framework/data/generator/action/domain_utils.py b/cosmos_framework/data/generator/action/domain_utils.py
+index ccb6b48..ef87b11 100644
+--- a/cosmos_framework/data/generator/action/domain_utils.py
++++ b/cosmos_framework/data/generator/action/domain_utils.py
+@@ -25,6 +25,7 @@ EMBODIMENT_TO_DOMAIN_ID: dict[str, int] = {
+     "abc_yam": 16,  # ABC uses the same YAM 20D FK action contract
+     "fractal": 20,
+     "drawanything": 21,
++    "so101": 22,
+ }
+ 
+ 
+@@ -47,6 +48,7 @@ EMBODIMENT_TO_RAW_ACTION_DIM: dict[str, int] = {
+     "abc_yam": 20,
+     "fractal": 10,
+     "drawanything": 3,
++    "so101": 6,
+     # NOTE: ``libero`` (7/10/13 depending on ``rotation_space``) and ``hand_pose``
+     # (variable with ``keypoint_option`` and ``rotation_format``) are absent
+     # because their raw width is set per-dataset at construction time. Inference
+diff --git a/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json b/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+new file mode 100644
+index 0000000..d663369
+--- /dev/null
++++ b/cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json
+@@ -0,0 +1,4 @@
++{
++  "min": [-100.0, -100.0, -100.0, -100.0, -100.0, 0.0],
++  "max": [100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
++}
+diff --git a/cosmos_framework/model/generator/omni_mot_model.py b/cosmos_framework/model/generator/omni_mot_model.py
+index 8dfd9b3..a70f9ab 100644
+--- a/cosmos_framework/model/generator/omni_mot_model.py
++++ b/cosmos_framework/model/generator/omni_mot_model.py
+@@ -253,6 +253,7 @@ class OmniMoTModel(ImaginaireModel):
+                     lora_rank=self.config.lora_rank,
+                     lora_alpha=self.config.lora_alpha,
+                     lora_target_modules=self.config.lora_target_modules,
++                    lora_extra_trainable=self.config.lora_extra_trainable,
+                 )
+ 
+         self.install_attention_dispatch(net)
+@@ -5164,6 +5165,7 @@ class OmniMoTModel(ImaginaireModel):
+         lora_rank: int,
+         lora_alpha: int,
+         lora_target_modules: str,
++        lora_extra_trainable: str = "",
+     ) -> torch.nn.Module:
+         """Pre-FSDP LoRA injection — see :func:`inject_lora_pre_fsdp` for details."""
+         from cosmos_framework.utils.generator.lora import inject_lora_pre_fsdp
+@@ -5174,6 +5176,7 @@ class OmniMoTModel(ImaginaireModel):
+             lora_rank=lora_rank,
+             lora_alpha=lora_alpha,
+             lora_target_modules=lora_target_modules,
++            lora_extra_trainable=lora_extra_trainable,
+         )
+ 
+     def _init_lora_weights_post_materialization(self, network: torch.nn.Module) -> None:
+diff --git a/cosmos_framework/scripts/action_policy_server_robolab.py b/cosmos_framework/scripts/action_policy_server_robolab.py
+index cbe1deb..6ec937b 100644
+--- a/cosmos_framework/scripts/action_policy_server_robolab.py
++++ b/cosmos_framework/scripts/action_policy_server_robolab.py
+@@ -25,7 +25,6 @@ from cosmos_framework.inference.common.init import init_script
+ 
+ init_script()
+ 
+-import json
+ import socket
+ import threading
+ from dataclasses import dataclass
+@@ -59,6 +58,11 @@ from cosmos_framework.scripts.action_policy_server_utils import (
+     maybe_init_distributed,
+ )
+ from cosmos_framework.utils import log
++from cosmos_framework.data.generator.action.action_normalization import (
++    denormalize_action,
++    load_action_stats,
++    normalize_action,
++)
+ from cosmos_framework.utils.checkpoint_db import CheckpointDirHf
+ from cosmos_framework.utils.lazy_config import instantiate
+ 
+@@ -78,8 +82,6 @@ _DEFAULT_HF_REVISION = "main"
+ _ROBOLAB_POLICY_HF_REPOSITORIES = {
+     "Cosmos3-Nano-Policy-DROID": "nvidia/Cosmos3-Nano-Policy-DROID",
+     "nvidia/Cosmos3-Nano-Policy-DROID": "nvidia/Cosmos3-Nano-Policy-DROID",
+-    "Cosmos3-Edge-Policy-DROID": "nvidia/Cosmos3-Edge-Policy-DROID",
+-    "nvidia/Cosmos3-Edge-Policy-DROID": "nvidia/Cosmos3-Edge-Policy-DROID",
+ }
+ 
+ ActionSpace = Literal["joint_pos", "midtrain"]
+@@ -292,8 +294,14 @@ class RobolabPolicyConfig:
+     image_height: int = _DEFAULT_IMAGE_HEIGHT
+     image_width: int = _DEFAULT_IMAGE_WIDTH
+     action_space: ActionSpace = "joint_pos"
++    mode: str = "wam"
++    action_normalization: str | None = None
++    normalizer_stats_path: str | None = None
++    view_description: str | None = None
+     use_state: bool = True
+     history_length: int = 1
++    arm_joint_dim: int = 7
++    flip_gripper: bool = True
+ 
+ 
+ class RobolabServerArgs(pydantic.BaseModel):
+@@ -326,6 +334,14 @@ class RobolabServerArgs(pydantic.BaseModel):
+     sampler: Literal["unipc", "edm"] = "unipc"
+     """Diffusion sampler used by OmniInference."""
+ 
++    device_memory_bytes: int | None = None
++    """Override auto-detected GPU memory in bytes, used for parallelism sizing. Required on platforms where
++    NVML memory queries are unsupported (e.g. unified-memory GPUs like GB10, which raise NVMLError_NotSupported)."""
++
++    guardrails: bool = True
++    """Enable guardrails. Requires access to the gated nvidia/Cosmos-Guardrail1 checkpoint on Hugging Face;
++    disable with --no-guardrails if that access is not available."""
++
+     seed: int = 0
+     """Base generation seed used to initialize the request RNG."""
+     deterministic_seed: bool = False
+@@ -345,18 +361,53 @@ class RobolabServerArgs(pydantic.BaseModel):
+     """Number of action steps to predict. The default matches the released DROID RoboLab policy."""
+     action_dim: int | None = _DEFAULT_ACTION_DIM
+     """Raw action dimension. The default matches the released DROID RoboLab policy."""
++    arm_joint_dim: int = 7
++    """Width of 'observation/joint_position' for --action-space joint_pos. The default (7) matches DROID's
++    arm; smaller/larger embodiments (e.g. SO-101's 5-joint arm) must override this."""
+     image_height: int = _DEFAULT_IMAGE_HEIGHT
+     """Input observation image height. The default matches the released DROID RoboLab policy."""
+     image_width: int = _DEFAULT_IMAGE_WIDTH
+     """Input observation image width. The default matches the released DROID RoboLab policy."""
+     action_space: ActionSpace = "joint_pos"
+     """RoboLab action representation to serve."""
++    action_normalization: str | None = None
++    """Action normalization method the policy was TRAINED with -- one of 'minmax',
++    'quantile', 'meanstd', or None. Must match the training dataset's
++    `action_normalization`, otherwise the served actions come back on the wrong scale.
++    DROID trains with None (raw actions), which is why this defaults to None and the
++    DROID serving path is unchanged. SO-101 trains with 'minmax' against its `.pos`
++    calibration bounds, so serving an SO-101 policy REQUIRES
++    --action-normalization minmax --normalizer-stats-path <stats.json>; without it the
++    model's normalized outputs (roughly [-1, 1]) are returned verbatim and every joint
++    is commanded to about zero."""
++    view_description: str | None = None
++    """Override the concat-view text description sent with every request. This is TEXT
++    CONDITIONING the model was trained against, so it must match the training dataset's
++    `additional_view_description`. Defaults to DROID's wording (wrist on top, two
++    horizontally concatenated third-person views on the bottom). SO-101 trains with
++    "The top half is from the front-facing wrist camera. The bottom half is from the
++    fixed overhead camera." and must pass it explicitly."""
++    normalizer_stats_path: str | None = None
++    """JSON stats file backing --action-normalization, e.g.
++    cosmos_framework/data/generator/action/normalizer_stats/so101_lerobot_stats.json."""
++    mode: str = "wam"
++    """Action sequence-plan mode forwarded to build_sequence_plan_from_mode. This repo's
++    transforms accept only 'forward_dynamics' | 'inverse_dynamics' | 'wam'; 'wam' is the
++    policy mode every action-policy experiment here trains with (action_policy_so101_nano,
++    action_policy_droid_nano, action_policy_libero_*). The previously hardcoded 'policy'
++    is not a valid mode in this checkout and raised ValueError on the first request."""
+     use_state: bool = True
+     """Whether the first action row contains the current state."""
+     history_length: int = 1
+     """State/history action rows to trim from the generated action output."""
+-    format_prompt_as_json: bool | None = None
+-    """Serve prompts as structured JSON (matching training ``format_prompt_as_json``)."""
++    flip_gripper: bool = True
++    """Whether to apply the '1.0 - x' gripper convention flip on both the incoming
++    'observation/gripper_position' and the outgoing predicted gripper action. The
++    default (on) matches the released DROID RoboLab policy, whose dataset stores
++    gripper openness on a [0, 1] scale that needs flipping to the model's trained
++    convention. Domains trained on a raw, unflipped gripper scale (e.g. SO-101's
++    LeRobot '.pos' convention, which is on [0, 100] and would be corrupted by a
++    '1.0 - x' flip) must pass --no-flip-gripper."""
+ 
+ 
+ class RobolabPolicyService:
+@@ -402,8 +453,14 @@ class RobolabPolicyService:
+             image_height=int(args.image_height),
+             image_width=int(args.image_width),
+             action_space=args.action_space,
++            mode=str(args.mode),
++            action_normalization=args.action_normalization,
++            normalizer_stats_path=args.normalizer_stats_path,
++            view_description=args.view_description,
+             use_state=bool(args.use_state),
+             history_length=int(args.history_length),
++            arm_joint_dim=int(args.arm_joint_dim),
++            flip_gripper=bool(args.flip_gripper),
+         )
+         if self.cfg.history_length < (1 if self.cfg.use_state else 0):
+             raise ValueError("--history-length must be >= 1 when --use-state is true")
+@@ -412,9 +469,26 @@ class RobolabPolicyService:
+ 
+         self._lock = threading.Lock()
+         self._rng = np.random.default_rng(self.cfg.seed)
++        self._norm_stats: dict[str, torch.Tensor] | None = None
++        if self.cfg.action_normalization:
++            if not self.cfg.normalizer_stats_path:
++                raise ValueError(
++                    "--action-normalization requires --normalizer-stats-path "
++                    "(the JSON the training dataset normalized against)."
++                )
++            # load_action_stats returns numpy; normalize/denormalize call .clamp -> need torch.
++            self._norm_stats = {
++                key: torch.from_numpy(value) for key, value in load_action_stats(self.cfg.normalizer_stats_path).items()
++            }
++            log.info(
++                f"[robolab-policy-server] action normalization={self.cfg.action_normalization!r} "
++                f"stats={self.cfg.normalizer_stats_path!r}"
++            )
++
+         log.info(
+             f"[robolab-policy-server] ready domain={self.cfg.domain_name!r} resolution={self.cfg.resolution!r} "
+             f"action_space={self.cfg.action_space} action_dim={self.cfg.action_dim} "
++            f"arm_joint_dim={self.cfg.arm_joint_dim} flip_gripper={self.cfg.flip_gripper} "
+             f"chunk={self.cfg.action_chunk_size} history={self.cfg.history_length} use_state={self.cfg.use_state} "
+             f"image={self.cfg.image_height}x{self.cfg.image_width} fps={self.cfg.conditioning_fps} "
+             f"guidance={self.cfg.guidance} num_steps={self.cfg.num_steps} shift={self.cfg.shift} "
+@@ -426,6 +500,7 @@ class RobolabPolicyService:
+             "checkpoint_path": args.checkpoint_path,
+             "output_dir": args.output_dir or _DEFAULT_ROBOLAB_OUTPUT_DIR,
+             "sampler": args.sampler,
++            "guardrails": args.guardrails,
+         }
+         if args.experiment is not None:
+             setup_overrides["experiment"] = args.experiment
+@@ -434,10 +509,28 @@ class RobolabPolicyService:
+         if args.credential_path is not None:
+             setup_overrides["credential_path"] = args.credential_path
+         overrides = OmniSetupOverrides.model_validate(setup_overrides)
+-        setup_args = overrides.build_setup()
++        setup_args = overrides.build_setup(device_memory_bytes=args.device_memory_bytes)
+         init_output_dir(setup_args.output_dir)
+         return disable_runtime_ema_for_frozen_config(setup_args)
+ 
++    def _maybe_normalize(self, action: torch.Tensor) -> torch.Tensor:
++        """Raw units -> the normalized space the policy was trained in. No-op when unset."""
++        stats = getattr(self, "_norm_stats", None)
++        if stats is None or not getattr(self.cfg, "action_normalization", None):
++            return action
++        # Stats load on CPU; the predicted action comes back on CUDA.
++        stats = {key: value.to(action.device) for key, value in stats.items()}
++        return normalize_action(action, self.cfg.action_normalization, stats)
++
++    def _maybe_denormalize(self, action: torch.Tensor) -> torch.Tensor:
++        """Normalized model output -> raw units the robot expects. No-op when unset."""
++        stats = getattr(self, "_norm_stats", None)
++        if stats is None or not getattr(self.cfg, "action_normalization", None):
++            return action
++        # Stats load on CPU; the predicted action comes back on CUDA.
++        stats = {key: value.to(action.device) for key, value in stats.items()}
++        return denormalize_action(action, self.cfg.action_normalization, stats)
++
+     def _build_transform(self, training_config: Any | None, args: RobolabServerArgs) -> tuple[Any, dict[str, Any]]:
+         inferred: dict[str, Any] = {}
+         model_max_action_dim = getattr(getattr(self.model, "config", None), "max_action_dim", None)
+@@ -458,17 +551,9 @@ class RobolabPolicyService:
+ 
+         if dataset_config is None or dataset_entry is None:
+             log.warning(
+-                "[robolab-policy-server] no training action dataset config found; using default "
+-                f"ActionTransformPipeline (format_prompt_as_json={bool(args.format_prompt_as_json)})"
+-            )
+-            return (
+-                ActionTransformPipeline(
+-                    max_action_dim=max_action_dim,
+-                    cfg_dropout_rate=0.0,
+-                    format_prompt_as_json=bool(args.format_prompt_as_json),
+-                ),
+-                inferred,
++                "[robolab-policy-server] no training action dataset config found; using default ActionTransformPipeline"
+             )
++            return ActionTransformPipeline(max_action_dim=max_action_dim, cfg_dropout_rate=0.0), inferred
+ 
+         if action_dataset_config is not None:
+             chunk_length = getattr(action_dataset_config, "chunk_length", None)
+@@ -492,9 +577,6 @@ class RobolabPolicyService:
+ 
+         dataset_entry.dataset = {"_target_": f"{__name__}._DummyDataset"}
+ 
+-        if args.format_prompt_as_json is not None:
+-            dataset_config.format_prompt_as_json = bool(args.format_prompt_as_json)
+-
+         wrapped_dataset = instantiate(dataset_config)
+         return wrapped_dataset.transform, inferred
+ 
+@@ -524,12 +606,20 @@ class RobolabPolicyService:
+         )  # [T,D]
+         history_action: torch.Tensor | None = None
+         num_history_rows = self.cfg.history_length - use_state_rows
+-        gripper_position = 1.0 - _ensure_gripper_array(obs["observation/gripper_position"])
++        gripper_position = _ensure_gripper_array(obs["observation/gripper_position"])
++        if self.cfg.flip_gripper:
++            gripper_position = 1.0 - gripper_position
+ 
+         if self.cfg.action_space == "joint_pos":
+-            joint_position = _ensure_2d_float_array(obs["observation/joint_position"], "observation/joint_position", 7)
++            joint_position = _ensure_2d_float_array(
++                obs["observation/joint_position"], "observation/joint_position", self.cfg.arm_joint_dim
++            )
+             if self.cfg.use_state:
+-                action[0] = torch.from_numpy(np.concatenate((joint_position[-1], gripper_position[-1])))  # [D]
++                # Row 0 is the CURRENT state. Training normalized the whole action
++                # tensor (state row included), so normalize it here too; rows 1.. stay
++                # zero because they are the noise placeholders the model denoises.
++                state_row = torch.from_numpy(np.concatenate((joint_position[-1], gripper_position[-1])))  # [D]
++                action[0] = self._maybe_normalize(state_row)
+             if num_history_rows > 0:
+                 if len(joint_position) < num_history_rows + 1:
+                     raise ValueError("Not enough joint_position rows for requested history_length")
+@@ -561,17 +651,14 @@ class RobolabPolicyService:
+             "video": video,
+             "action": action,
+             "conditioning_fps": torch.tensor(self.cfg.conditioning_fps, dtype=torch.long),  # []
+-            "mode": "wam",
++            "mode": self.cfg.mode,
+             "domain_id": torch.tensor(get_domain_id(self.cfg.domain_name), dtype=torch.long),  # []
+             "viewpoint": "concat_view",
+-            "additional_view_description": _CONCAT_VIEW_DESCRIPTION,
++            "additional_view_description": self.cfg.view_description or _CONCAT_VIEW_DESCRIPTION,
+         }
+         if history_action is not None:
+             sample["history_action"] = history_action
+-        sample = self._transform(sample, self.cfg.resolution)
+-        if isinstance(sample.get("ai_caption"), dict):
+-            sample["ai_caption"] = json.dumps(sample["ai_caption"])
+-        return sample
++        return self._transform(sample, self.cfg.resolution)
+ 
+     def infer(self, obs: dict[str, Any]) -> dict[str, Any]:
+         sample = self._build_sample(obs)
+@@ -591,8 +678,10 @@ class RobolabPolicyService:
+ 
+         action = samples["action"][0][:, : self.cfg.action_dim]  # [T,D]
+         action = action[self.cfg.history_length :]  # [T2,D]
++        action = self._maybe_denormalize(action)  # back to raw units (no-op when unset)
+         action_np = action.detach().cpu().numpy()  # [T2,D]
+-        action_np[:, -1] = 1.0 - action_np[:, -1]
++        if self.cfg.flip_gripper:
++            action_np[:, -1] = 1.0 - action_np[:, -1]
+ 
+         if self.cfg.action_space == "midtrain":
+             eef_pos = _ensure_2d_float_array(obs["observation/eef_pos"], "observation/eef_pos", 3)
+diff --git a/cosmos_framework/scripts/action_policy_server_robolab_test.py b/cosmos_framework/scripts/action_policy_server_robolab_test.py
+index 6b56cf2..42630f9 100644
+--- a/cosmos_framework/scripts/action_policy_server_robolab_test.py
++++ b/cosmos_framework/scripts/action_policy_server_robolab_test.py
+@@ -141,6 +141,93 @@ def test_joint_pos_observation_preprocessing_matches_internal_layout() -> None:
+     assert sample["viewpoint"] == "concat_view"
+ 
+ 
++def test_joint_pos_observation_preprocessing_supports_smaller_arm_joint_dim() -> None:
++    """SO-101 (5 arm joints + 1 gripper = 6-dim action) via --arm-joint-dim, not DROID's hardcoded 7."""
++    service = object.__new__(robolab_server.RobolabPolicyService)
++    service.cfg = robolab_server.RobolabPolicyConfig(
++        checkpoint_path="/unused/model",
++        domain_name="so101",
++        decode_video=False,
++        seed=0,
++        deterministic_seed=True,
++        guidance=3.0,
++        num_steps=4,
++        shift=5.0,
++        conditioning_fps=15.0,
++        resolution=None,
++        action_chunk_size=4,
++        action_dim=6,
++        image_height=4,
++        image_width=5,
++        action_space="joint_pos",
++        use_state=True,
++        history_length=2,
++        arm_joint_dim=5,
++    )
++    service._transform = lambda sample, resolution: sample
++
++    image = np.zeros((4, 5, 3), dtype=np.uint8)
++    joint_position = np.arange(10, dtype=np.float32).reshape(2, 5)
++    gripper_position = np.array([[0.2], [0.3]], dtype=np.float32)
++    obs = {
++        "prompt": "place the object in the bin",
++        "observation/image": image,
++        "observation/joint_position": joint_position,
++        "observation/gripper_position": gripper_position,
++    }
++
++    sample = robolab_server.RobolabPolicyService._build_sample(service, obs)
++
++    assert sample["action"].shape == (5, 6)
++    np.testing.assert_allclose(sample["action"][0].numpy(), np.concatenate([joint_position[-1], [0.7]]))
++    assert sample["history_action"].shape == (1, 6)
++    np.testing.assert_allclose(sample["history_action"][0].numpy(), np.concatenate([joint_position[0], [0.8]]))
++
++
++def test_no_flip_gripper_passes_raw_scale_through_unmodified() -> None:
++    """SO-101's gripper is a raw [0,100] LeRobot '.pos' value, not DROID's [0,1] openness scale --
++    the default '1.0 - x' flip would corrupt it (e.g. 1.0 - 87.3 = -86.3), so --no-flip-gripper
++    must pass 'observation/gripper_position' straight through on both request and response."""
++    service = object.__new__(robolab_server.RobolabPolicyService)
++    service.cfg = robolab_server.RobolabPolicyConfig(
++        checkpoint_path="/unused/model",
++        domain_name="so101",
++        decode_video=False,
++        seed=0,
++        deterministic_seed=True,
++        guidance=3.0,
++        num_steps=4,
++        shift=5.0,
++        conditioning_fps=15.0,
++        resolution=None,
++        action_chunk_size=4,
++        action_dim=6,
++        image_height=4,
++        image_width=5,
++        action_space="joint_pos",
++        use_state=True,
++        history_length=2,
++        arm_joint_dim=5,
++        flip_gripper=False,
++    )
++    service._transform = lambda sample, resolution: sample
++
++    image = np.zeros((4, 5, 3), dtype=np.uint8)
++    joint_position = np.arange(10, dtype=np.float32).reshape(2, 5)
++    gripper_position = np.array([[20.0], [87.3]], dtype=np.float32)
++    obs = {
++        "prompt": "place the object in the bin",
++        "observation/image": image,
++        "observation/joint_position": joint_position,
++        "observation/gripper_position": gripper_position,
++    }
++
++    sample = robolab_server.RobolabPolicyService._build_sample(service, obs)
++
++    np.testing.assert_allclose(sample["action"][0].numpy(), np.concatenate([joint_position[-1], [87.3]]))
++    np.testing.assert_allclose(sample["history_action"][0].numpy(), np.concatenate([joint_position[0], [20.0]]))
++
++
+ def test_build_data_batch_wraps_multi_item_keys_like_internal_server() -> None:
+     sample = {
+         "video": torch.zeros((3, 2, 4, 5), dtype=torch.uint8),  # [3,T,H,W]
+diff --git a/cosmos_framework/scripts/export_model.py b/cosmos_framework/scripts/export_model.py
+index 2d0f8a3..627deb4 100644
+--- a/cosmos_framework/scripts/export_model.py
++++ b/cosmos_framework/scripts/export_model.py
+@@ -98,25 +98,61 @@ def _dataset_config_value(dataset_config: Any, key: str) -> Any:
+     return parameter.default
+ 
+ 
+-def _build_edge_policy_metadata(training_config: Any) -> dict[str, Any]:
+-    """Resolve policy manifest fields from the action experiment config."""
++def _action_dataset_configs(training_config: Any) -> list[Any]:
++    """Return every action dataset config, across both dataloader layouts.
++
++    Two shapes exist in the wild and both carry the same fields:
++
++    * ``dataloader_train.dataloaders.action_data.dataloader.dataset`` with a
++      ``list_of_datasets`` list -- the multi-dataloader layout this resolver was
++      originally written against.
++    * ``dataloader_train.dataloader.datasets.<name>.dataset`` -- the
++      PackingDataLoader + RankPartitionedDataLoader layout used by every action
++      recipe shipped here (droid_nano, libero_nano, so101_*).
++
++    The first is preferred so existing configs resolve unchanged.
++    """
+     try:
+         dataset_config = training_config.dataloader_train.dataloaders.action_data.dataloader.dataset
+-    except AttributeError as exc:
+-        raise ValueError(
+-            "Cosmos3 Edge export requires an action dataset config at "
+-            "dataloader_train.dataloaders.action_data.dataloader.dataset."
+-        ) from exc
++    except AttributeError:
++        dataset_config = None
++
++    if dataset_config is not None:
++        entries = _config_value(dataset_config, "list_of_datasets")
++        if not entries:
++            raise ValueError("Cosmos3 Edge export requires at least one action dataset entry.")
++        configs = []
++        for entry in entries:
++            cfg = _config_value(entry, "dataset")
++            if cfg is None:
++                raise ValueError("Cosmos3 Edge action dataset entries must define a dataset config.")
++            configs.append(cfg)
++        return configs
+ 
+-    dataset_entries = _config_value(dataset_config, "list_of_datasets")
+-    if not dataset_entries:
+-        raise ValueError("Cosmos3 Edge export requires at least one action dataset entry.")
++    try:
++        datasets = training_config.dataloader_train.dataloader.datasets
++    except AttributeError:
++        datasets = None
++
++    if datasets is not None:
++        values = datasets.values() if hasattr(datasets, "values") else datasets
++        configs = [c for c in (_config_value(v, "dataset") for v in values) if c is not None]
++        if configs:
++            return configs
++
++    raise ValueError(
++        "Cosmos3 Edge export requires an action dataset config at either "
++        "dataloader_train.dataloaders.action_data.dataloader.dataset or "
++        "dataloader_train.dataloader.datasets.<name>.dataset."
++    )
++
++
++def _build_edge_policy_metadata(training_config: Any) -> dict[str, Any]:
++    """Resolve policy manifest fields from the action experiment config."""
++    dataset_entries = _action_dataset_configs(training_config)
+ 
+     metadata_by_dataset: list[dict[str, Any]] = []
+-    for entry in dataset_entries:
+-        action_dataset_config = _config_value(entry, "dataset")
+-        if action_dataset_config is None:
+-            raise ValueError("Cosmos3 Edge action dataset entries must define a dataset config.")
++    for action_dataset_config in dataset_entries:
+ 
+         target = _config_value(action_dataset_config, "_target_") or _config_value(action_dataset_config, "_target")
+         action_chunk_size = _dataset_config_value(action_dataset_config, "chunk_length")
+diff --git a/cosmos_framework/scripts/merge_lora_dcp.py b/cosmos_framework/scripts/merge_lora_dcp.py
+new file mode 100644
+index 0000000..8dd17d7
+--- /dev/null
++++ b/cosmos_framework/scripts/merge_lora_dcp.py
+@@ -0,0 +1,176 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++"""Fold LoRA adapters from a trained DCP checkpoint back into the base weights.
++
++``LoraInjectedLinear`` (``cosmos_framework/utils/generator/lora.py``) keeps the
++base weight at its original ``<path>.weight`` key and stores the adapters as
++siblings ``<path>.lora_A.weight`` / ``<path>.lora_B.weight``, computing::
++
++    y = W x + (alpha / rank) * B (A x)
++
++which is exactly ``(W + (alpha / rank) * B @ A) x``. So the adapters can be
++folded in-place and dropped, yielding a checkpoint that is architecturally
++identical to a full fine-tune. That matters downstream: neither
++``cosmos_framework.scripts.export_model`` nor
++``cosmos_framework.scripts.action_policy_server_robolab`` knows about LoRA, so a
++merged checkpoint is the one that serves without any LoRA-aware rebuild.
++
++Usage::
++
++    python -m cosmos_framework.scripts.merge_lora_dcp \\
++        --input  outputs/train/<project>/<group>/<name>/checkpoints/iter_000004000 \\
++        --output outputs/train/<project>/<group>/<name>/checkpoints/iter_000004000_merged \\
++        --lora-alpha 32 --lora-rank 16
++
++``--lora-alpha`` / ``--lora-rank`` MUST match the values the run trained with
++(``[model].lora_alpha`` / ``lora_rank`` in the recipe TOML) -- the scale
++``alpha/rank`` is not recorded in the checkpoint.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import shutil
++from pathlib import Path
++
++import torch
++import torch.distributed.checkpoint as dcp
++from torch.distributed.checkpoint.format_utils import _EmptyStateDictLoadPlanner
++from torch.distributed.checkpoint.state_dict_loader import _load_state_dict
++
++from cosmos_framework.utils import log
++
++_LORA_A = ".lora_A.weight"
++_LORA_B = ".lora_B.weight"
++
++
++def _load_full_state_dict(model_dir: Path) -> dict:
++    """Read an entire DCP directory into a plain in-memory state dict.
++
++    Uses the private ``_load_state_dict`` with ``no_dist=True`` -- the same path
++    ``dcp_to_torch_save`` takes. The public ``dcp.load`` will NOT work here: it
++    populates the *keys already present* in the passed dict, so handing it an
++    empty dict reads every byte off disk and returns nothing.
++    """
++    state_dict: dict = {}
++    _load_state_dict(
++        state_dict,
++        storage_reader=dcp.FileSystemReader(str(model_dir)),
++        planner=_EmptyStateDictLoadPlanner(),
++        no_dist=True,
++    )
++    if not state_dict:
++        raise RuntimeError(f"Read no tensors from {model_dir} -- is it a valid DCP checkpoint?")
++    return state_dict
++
++
++def merge_lora_state_dict(state_dict: dict, *, lora_alpha: float, lora_rank: int) -> tuple[dict, int]:
++    """Fold every ``lora_A``/``lora_B`` pair into its sibling base weight.
++
++    Returns the merged state dict (adapter keys removed) and the number of
++    modules merged.
++    """
++    if lora_rank <= 0:
++        raise ValueError(f"lora_rank must be positive, got {lora_rank}")
++    scale = float(lora_alpha) / float(lora_rank)
++
++    prefixes = sorted(k[: -len(_LORA_A)] for k in state_dict if k.endswith(_LORA_A))
++    if not prefixes:
++        raise ValueError(
++            "No LoRA adapters found in this checkpoint (no '*.lora_A.weight' keys). "
++            "Either it was not trained with lora_enabled=true, or it is already merged."
++        )
++
++    merged = 0
++    for prefix in prefixes:
++        a_key, b_key, w_key = prefix + _LORA_A, prefix + _LORA_B, prefix + ".weight"
++        if b_key not in state_dict:
++            raise KeyError(f"{a_key} has no matching {b_key} -- checkpoint is malformed.")
++        if w_key not in state_dict:
++            raise KeyError(f"{a_key} has no matching base weight {w_key} -- checkpoint is malformed.")
++
++        a = state_dict[a_key]  # [rank, in_features]
++        b = state_dict[b_key]  # [out_features, rank]
++        w = state_dict[w_key]  # [out_features, in_features]
++
++        if a.shape[0] != lora_rank or b.shape[1] != lora_rank:
++            raise ValueError(
++                f"{prefix}: adapter rank mismatch -- checkpoint has A{tuple(a.shape)} B{tuple(b.shape)} "
++                f"but --lora-rank={lora_rank} was passed. Pass the rank the run actually trained with."
++            )
++
++        # Accumulate in fp32 regardless of the stored dtype; a bf16 accumulate
++        # of a low-magnitude delta loses most of the update.
++        delta = scale * (b.to(torch.float32) @ a.to(torch.float32))
++        if delta.shape != w.shape:
++            raise ValueError(f"{prefix}: merged delta {tuple(delta.shape)} != base weight {tuple(w.shape)}")
++        state_dict[w_key] = (w.to(torch.float32) + delta).to(w.dtype)
++
++        del state_dict[a_key]
++        del state_dict[b_key]
++        merged += 1
++
++    return state_dict, merged
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    parser.add_argument("--input", required=True, help="Trained checkpoint dir (the iter_XXXXXXXXX directory).")
++    parser.add_argument("--output", required=True, help="Destination dir for the merged checkpoint.")
++    parser.add_argument("--lora-alpha", type=float, required=True, help="Must match the run's [model].lora_alpha.")
++    parser.add_argument("--lora-rank", type=int, required=True, help="Must match the run's [model].lora_rank.")
++    parser.add_argument("--overwrite", action="store_true", help="Replace --output if it already exists.")
++    args = parser.parse_args()
++
++    in_dir = Path(args.input).expanduser().resolve()
++    out_dir = Path(args.output).expanduser().resolve()
++
++    in_model = in_dir / "model" if (in_dir / "model").is_dir() else in_dir
++    if not (in_model / ".metadata").is_file():
++        raise SystemExit(f"Not a DCP checkpoint: no .metadata under {in_model}")
++    if out_dir.exists():
++        if not args.overwrite:
++            raise SystemExit(f"Output already exists: {out_dir} (pass --overwrite to replace)")
++        shutil.rmtree(out_dir)
++
++    log.info(f"[merge-lora] reading {in_model}")
++    state_dict = _load_full_state_dict(in_model)
++    log.info(f"[merge-lora] loaded {len(state_dict)} tensors")
++
++    state_dict, merged = merge_lora_state_dict(state_dict, lora_alpha=args.lora_alpha, lora_rank=args.lora_rank)
++    log.info(f"[merge-lora] merged {merged} adapter pairs at scale {args.lora_alpha / args.lora_rank:g}")
++
++    out_model = out_dir / "model"
++    out_model.mkdir(parents=True, exist_ok=True)
++    # no_dist=True: this runs as a plain single process, not under torchrun.
++    dcp.save(state_dict, storage_writer=dcp.FileSystemWriter(str(out_model)), no_dist=True)
++    log.info(f"[merge-lora] wrote {len(state_dict)} tensors to {out_model}")
++
++    # Carry over the sidecars the downstream loaders read, and record that this
++    # checkpoint no longer carries adapters.
++    for name in ("config.json", "checkpoint.json"):
++        src = in_model / name
++        if src.is_file():
++            shutil.copy2(src, out_model / name)
++    src_meta = in_dir / "checkpoint.json"
++    if src_meta.is_file():
++        shutil.copy2(src_meta, out_dir / "checkpoint.json")
++
++    cfg_path = out_model / "config.json"
++    if cfg_path.is_file():
++        try:
++            cfg = json.loads(cfg_path.read_text())
++            if isinstance(cfg, dict) and cfg.get("lora_enabled"):
++                cfg["lora_enabled"] = False
++                cfg_path.write_text(json.dumps(cfg, indent=2))
++                log.info("[merge-lora] set lora_enabled=false in the exported config.json")
++        except json.JSONDecodeError:
++            log.warning(f"[merge-lora] could not parse {cfg_path}; left as-is")
++
++    print(out_dir)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/cosmos_framework/utils/generator/lora.py b/cosmos_framework/utils/generator/lora.py
+index 8bffe56..35aa3ed 100644
+--- a/cosmos_framework/utils/generator/lora.py
++++ b/cosmos_framework/utils/generator/lora.py
+@@ -94,6 +94,7 @@ def inject_lora_pre_fsdp(
+     lora_rank: int,
+     lora_alpha: int,
+     lora_target_modules: str,
++    lora_extra_trainable: str = "",
+ ) -> torch.nn.Module:
+     """Inject LoRA adapters into ``network`` BEFORE FSDP wrap on meta device.
+ 
+@@ -107,8 +108,19 @@ def inject_lora_pre_fsdp(
+     ``to_empty(device="cuda") + init_weights(buffer_device="cuda")``
+     via ``init_lora_weights_post_materialization``.
+ 
+-    Also freezes every non-LoRA parameter so the optimizer's
++    Also freezes every non-LoRA parameter (except those named by
++    ``lora_extra_trainable``, below) so the optimizer's
+     ``keys_to_select=["lora_"]`` filter trains adapters only.
++
++    ``lora_extra_trainable`` is a comma-separated list of param-name substrings
++    that stay trainable alongside the adapters. It exists for recipes whose
++    heads are *freshly initialized* rather than loaded — e.g. the action-policy
++    recipes list ``action2llm``/``llm2action``/``action_modality_embed`` in
++    ``checkpoint.keys_to_skip_loading``, so those heads start from random init
++    and MUST train. Blanket-freezing them would leave a random projection in
++    the action path and the run would converge to a plausible-looking loss
++    while producing a useless policy. Empty by default, so pure-LoRA recipes
++    (e.g. ``vision_sft_super``) are unaffected.
+     """
+     assert network is not None, "Network is not initialized"
+ 
+@@ -136,21 +148,43 @@ def inject_lora_pre_fsdp(
+     if replaced == 0:
+         log.warning(f"LoRA injection replaced 0 modules — check lora_target_modules={lora_target_modules!r}")
+ 
++    extra_keys = [k.strip() for k in lora_extra_trainable.split(",") if k.strip()]
++
+     lora_params = 0
++    extra_params = 0
+     frozen_params = 0
++    matched_extra: set[str] = set()
+     for name, param in network.named_parameters():
+         if "lora_" in name:
+             param.requires_grad_(True)
+             lora_params += param.numel()
++            continue
++        matches = [k for k in extra_keys if k in name]
++        if matches:
++            param.requires_grad_(True)
++            extra_params += param.numel()
++            matched_extra.update(matches)
+         else:
+             param.requires_grad_(False)
+             frozen_params += param.numel()
+ 
++    unmatched = [k for k in extra_keys if k not in matched_extra]
++    if unmatched:
++        # Loud: a typo here silently reverts to "frozen random head", which is
++        # exactly the failure mode this parameter exists to prevent.
++        log.warning(
++            f"lora_extra_trainable keys matched no parameters: {unmatched} — "
++            "these will stay FROZEN. Check the substrings against the model's "
++            "parameter names."
++        )
++
++    trainable = lora_params + extra_params
+     log.info(
+         f"LoRA injection successful: {replaced} modules wrapped, "
+         f"{lora_params:,} trainable LoRA params, "
++        f"{extra_params:,} extra trainable params ({len(matched_extra)} key(s) matched), "
+         f"{frozen_params:,} frozen base params "
+-        f"({100 * lora_params / max(1, lora_params + frozen_params):.3f}% trainable)"
++        f"({100 * trainable / max(1, trainable + frozen_params):.3f}% trainable)"
+     )
+     return network
+ 
+diff --git a/examples/launch_sft_action_policy_so101_edge_focus5_multi_1gpu.sh b/examples/launch_sft_action_policy_so101_edge_focus5_multi_1gpu.sh
+new file mode 100755
+index 0000000..c8b2d31
+--- /dev/null
++++ b/examples/launch_sft_action_policy_so101_edge_focus5_multi_1gpu.sh
+@@ -0,0 +1,79 @@
++#!/usr/bin/env bash
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++# Single-GPU (1 x 96GB) launch for action_policy_so101_edge_focus5_multi against
++# examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml.
++#
++# Edge-tier sibling of launch_sft_action_policy_so101_nano_focus5_multi_1gpu.sh:
++# same dataset mix, same global batch, but the Cosmos3-Edge (Nemotron-2B-Dense-VL)
++# tier initialised from the Cosmos3-Edge-Policy-DROID checkpoint so the action
++# heads start trained rather than random. See the TOML header for the rationale.
++#
++# BASE_CHECKPOINT_PATH must point at a DCP conversion, not at the raw HF
++# download. Build the default (warm SO-101 action head) with:
++#
++#   python tools/transplant_domain.py \
++#       --src examples/checkpoints/Cosmos3-Edge-Policy-DROID \
++#       --dst examples/checkpoints/Cosmos3-Edge-Policy-DROID-so101init \
++#       --src-domain 8 --dst-domain 22
++#   python -m cosmos_framework.scripts.convert_model_to_dcp \
++#       --checkpoint-path examples/checkpoints/Cosmos3-Edge-Policy-DROID-so101init \
++#       -o examples/checkpoints/Cosmos3-Edge-Policy-DROID-so101init-dcp
++#
++# The transplant step is not optional for a warm start: action2llm/llm2action are
++# per-embodiment (nn.Embedding rows), DROID trained row 8, and SO-101's row 22
++# ships untrained. Converting Cosmos3-Edge-Policy-DROID directly yields the COLD
++# control -- valid as an A/B, but set the action-head lr_multipliers back to 5.0
++# in the TOML if you use it.
++#
++# Optional env vars:
++#   DATASET_PATH          default: examples/data/so101_bench_sim_6
++#   BASE_CHECKPOINT_PATH  default: examples/checkpoints/Cosmos3-Edge-Policy-DROID-so101init-dcp
++#   WAN_VAE_PATH          default: examples/checkpoints/wan22_vae/Wan2.2_VAE.pth
++#   NPROC_PER_NODE        default: 1
++#   SO101_EDGE_COLD_HEADS set to 1 to fresh-init the action heads (A/B against
++#                         the Nano convention, or when starting from base Edge)
++#   EXTRA_TAIL_OVERRIDES  space-separated Hydra overrides
++#
++# Smoke run (10 iters, no grad accumulation -- measures peak memory + iter time,
++# and is the run that validates the LoRA target names against the Nemotron
++# backbone before committing to a multi-day horizon):
++#   EXTRA_TAIL_OVERRIDES="trainer.max_iter=10 trainer.grad_accum_iter=1 \
++#     checkpoint.save_iter=100000 trainer.callbacks.device_monitor.every_n=1" \
++#     bash examples/launch_sft_action_policy_so101_edge_focus5_multi_1gpu.sh
++
++TOML_FILE="examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml"
++: "${DATASET_PATH:=examples/data/so101_bench_sim_6}"
++: "${BASE_CHECKPOINT_PATH:=examples/checkpoints/Cosmos3-Edge-Policy-DROID-so101init-dcp}"
++: "${NPROC_PER_NODE:=1}"
++export NPROC_PER_NODE
++
++# Same allocator note as the Nano launcher: on a single 96GB card, fragmentation
++# alone can fail a step, and expandable segments keeps the reserved-but-unallocated
++# tail reusable.
++export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
++
++EXTRA_DATASET_CHECK='[[ -f "$DATASET_PATH/meta/info.json" ]] || { echo "ERROR: missing $DATASET_PATH/meta/info.json -- stage with: uvx hf@latest download --repo-type dataset 5hadytru/so101_bench_sim_6 --local-dir $DATASET_PATH" >&2; exit 1; }'
++
++# The registered action_policy_so101_edge* experiments read SO101_ROOT (inherited
++# from the Nano recipe's dataloader). Anchor + export it here, mirroring
++# _sft_launcher_common.sh's anchoring, because that script exports DATASET_PATH
++# only after we would need SO101_ROOT set.
++_WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++[[ "$DATASET_PATH" = /* ]] || DATASET_PATH="$_WORKDIR/$DATASET_PATH"
++export SO101_ROOT="$DATASET_PATH"
++
++# Surface the head-init mode in the log: which of the two it ran is the single
++# most important thing to know when comparing checkpoints later.
++if [[ "${SO101_EDGE_COLD_HEADS:-0}" == "1" ]]; then
++    echo "[so101-edge] action heads: COLD (fresh init, Nano convention)"
++else
++    echo "[so101-edge] action heads: WARM (loaded from Cosmos3-Edge-Policy-DROID)"
++fi
++
++TAIL_OVERRIDES=(
++    ${EXTRA_TAIL_OVERRIDES:-}
++)
++
++source "$(dirname "${BASH_SOURCE[0]}")/_sft_launcher_common.sh"
+diff --git a/examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml b/examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml
+new file mode 100644
+index 0000000..b5b306f
+--- /dev/null
++++ b/examples/toml/sft_config/action_policy_so101_edge_focus5_multi_1gpu.toml
+@@ -0,0 +1,168 @@
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++# ============================================================================
++# SO-101 action-policy SFT -- SINGLE-GPU, COSMOS3-EDGE, FOCUS5 + CLUTTER.
++#
++# Edge-tier counterpart of action_policy_so101_nano_focus5_multi_1gpu.toml.
++# Same dataset mix, same 1-GPU budget; what changes is the model tier and how
++# much of it actually gets updated.
++#
++# Why Edge here
++# -------------
++# Edge is the smaller tier, not the more accurate one -- the released DROID
++# policies score Edge 22.9% vs Nano 36.8% on RoboLab. The reason to run it on
++# this box is capacity per unit of VRAM. Nano's Qwen3-VL-8B backbone only fit as
++# rank-16 LoRA on *_moe_gen at global batch 32; Edge's Nemotron-2B-Dense-VL
++# backbone is roughly a quarter of that trainable surface, so the same 96 GB
++# buys rank-32 adapters, double the microbatch, and more epochs over the same
++# 128 training episodes. On a dataset this small, adaptation capacity is the
++# binding constraint, not the pretrained ceiling.
++#
++# Three changes target the accuracy/precision problem directly
++# ------------------------------------------------------------
++# 1. WARM ACTION HEADS. Initialises from nvidia/Cosmos3-Edge-Policy-DROID and
++#    *keeps* its action heads instead of re-randomising them, where the Nano run
++#    spent its whole budget relearning them from scratch on 128 episodes.
++#
++#    Loading that checkpoint is necessary but NOT sufficient: action2llm /
++#    llm2action are DomainAwareLinear, i.e. nn.Embedding(num_domains, out*in),
++#    so each embodiment owns a private row. DROID trained row 8; SO-101 is row
++#    22, which in the released checkpoint is still xavier init with a zero bias
++#    (measured: fc norm 10.67 vs 6.44, bias 1.56 vs 0.000). So
++#    BASE_CHECKPOINT_PATH must point at a conversion of the checkpoint produced
++#    by tools/transplant_domain.py, which copies row 8 into row 22. Pointing it
++#    at the plain ...-dcp gives cold SO-101 heads and is the control, not the
++#    treatment. (SO101_EDGE_COLD_HEADS=1 reverts to fresh init entirely.)
++# 2. CORRECT FLOW-MATCHING SHIFT. EDGE_MODEL_CONFIG is natively resolution
++#    "480", matching the 480x640-per-camera SO-101 data, so training draws
++#    shift=5. The Nano recipe left resolution="720" and therefore trained with
++#    shift=10 against 480p input.
++# 3. MORE TRAINABLE RANK. lora_rank 32 / alpha 64, double the Nano recipe's
++#    16/32. Edge's backbone is small enough that the extra adapter capacity
++#    costs little, and rank is the knob that decides how much task-specific
++#    grasp behaviour the policy can actually store.
++#
++# Dataset (unchanged from the Nano focus5+multi mix; max_episodes_per_task 45,
++# val_ratio 0.10):
++#   Place each object in the plastic bin           45 eps   ~35,700 frames
++#   Place the green shoes in the plastic bin       25         11,032
++#   Place the cooking spoon in the plastic bin     18          7,095
++#   Place the cardboard box in the plastic bin     18          6,256
++#   Place the flower pot in the plastic bin        18          5,819
++#   Place the altoids container in the plastic bin 18          4,930
++#   -------------------------------------------------------------------
++#   142 episodes kept -> 128 train / 14 val
++#
++# Horizon: measured by instantiating the loader, not estimated from frames --
++# 128 train episodes / 55,385 windows, so at global batch 32 one epoch is 1,731
++# iterations. 7000 iters = 4.05 epochs, landing in the 4.0-4.3 epoch window
++# where the Nano focus5 run produced its only working checkpoint.
++#
++# DISK: measured 6.5 GB per checkpoint (Nano's were ~29 GB), so 14 saves is
++# ~91 GB rather than Nano's ~406 GB. Disk is no longer the binding constraint
++# on save_iter.
++#
++# Env required (set by the paired launcher):
++#   SO101_ROOT, BASE_CHECKPOINT_PATH, WAN_VAE_PATH, IMAGINAIRE_OUTPUT_ROOT
++# ============================================================================
++
++[job]
++task       = "vfm"
++experiment = "action_policy_so101_edge_focus5_multi"
++project    = "cosmos3_action"
++group      = "action_sft_sim"
++name       = "action_policy_so101_edge_focus5_multi_1gpu"
++wandb_mode = "disabled"
++
++[model]
++precision           = "bfloat16"
++lora_enabled        = true
++# rank 64 / alpha 128 -- 4x the Nano recipe's rank 16. Sized from measurement,
++# not guessed: at rank 64 + microbatch 16 the run peaks at 26.1 GB of 96 GB, so
++# memory is nowhere near binding. 25,690,112 LoRA params + 8,458,240 action-head
++# params = 1.006% of the model trainable (Nano's rank-16 recipe was far less).
++lora_rank           = 64
++lora_alpha          = 128
++# Attention projections on the generation expert only -- same four targets as the
++# Nano recipe, and deliberately NOT extended to the MLP.
++#
++# The MoT layer suffixes only the decoder layer's DIRECT children with _moe_gen
++# (q/k/v/o_proj_moe_gen, mlp_moe_gen, norm_moe_gen). The gen MLP's own children
++# are plain gate_proj / up_proj / down_proj, identical in name to the frozen
++# understanding tower's. Since lora.py matches by EXACT child name anywhere in
++# the tree, "gate_proj_moe_gen" would match nothing (silent warning, 0 modules),
++# and bare "gate_proj" would inject adapters into the und tower as well -- which
++# this recipe, like the Nano one, intends to keep frozen. So the gen MLP is not
++# LoRA-targetable by name here; rank is the lever instead.
++#
++# If rank-32 adapters still underfit, the next lever is adding "mlp_moe_gen" to
++# lora_extra_trainable, which trains the gen MLP at FULL rank (substring match on
++# parameter names, so it is correctly gen-tower-scoped). Costs materially more
++# memory -- re-measure with a smoke run before committing.
++lora_target_modules  = "q_proj_moe_gen,k_proj_moe_gen,v_proj_moe_gen,o_proj_moe_gen"
++lora_extra_trainable = "action2llm,llm2action,action_modality_embed"
++
++[model.ema]
++enabled = false
++
++[model.parallelism]
++data_parallel_shard_degree     = 1
++data_parallel_replicate_degree = 1
++
++[model.activation_checkpointing]
++# "selective" (per-op SAC) rather than Nano's "full" block recompute. With 66 GB
++# of the card idle there is no reason to pay full recompute. Measured: it does
++# not actually buy throughput here (the GPU sits at 100% util against the 600 W
++# power cap either way), but it costs nothing and leaves headroom for the
++# mlp_moe_gen lever below.
++mode           = "selective"
++save_ops_regex = ["fmha"]
++
++[model.tokenizer]
++vae_path = "${oc.env:WAN_VAE_PATH}"
++
++[optimizer]
++lr = 1.0e-04
++keys_to_select = ["lora_", "action2llm", "llm2action", "action_modality_embed"]
++
++[optimizer.lr_multipliers]
++# Uniform 1.0x, unlike the Nano recipe's 5x. The 5x exists to let randomly
++# initialised action heads catch up. Here every part of the action path starts
++# trained: action2llm/llm2action row 22 carries DROID's row 8 after
++# tools/transplant_domain.py, and action_modality_embed is a single shared
++# vector that DROID trained directly. Keeping 5x on warm weights would just
++# destroy them in the first few hundred steps.
++#
++# If you run with SO101_EDGE_COLD_HEADS=1, or point BASE_CHECKPOINT_PATH at the
++# UN-transplanted ...-dcp, set these back to 5.0 -- the heads are cold again.
++action2llm            = 1.0
++llm2action            = 1.0
++action_modality_embed = 1.0
++
++[scheduler]
++cycle_lengths = [7000]
++warm_up_steps = [200]
++
++[dataloader_train]
++# 16, four times Nano's 4. Measured peak 26.1 GB of 96 GB at this setting.
++max_samples_per_batch = 16
++
++[trainer]
++# 7000 iters x measured ~20 s/iter = ~39 h for 4.05 epochs. (The Nano run was
++# ~40 s/iter for the same global batch, i.e. ~78 h.)
++max_iter        = 7000
++logging_iter    = 10
++grad_accum_iter = 2    # global batch = 16 x 1 rank x 2 = 32, same as the Nano run
++
++[checkpoint]
++load_path = "${oc.env:BASE_CHECKPOINT_PATH}"
++# NOTE: action2llm / llm2action / action_modality_embed are deliberately ABSENT
++# from this list -- they load from the Edge DROID policy. Only EMA (warm-started
++# from net) and the LoRA adapters (which exist in no base checkpoint) are
++# skipped. This is the inverse of the Nano recipe and is intentional.
++keys_to_skip_loading = [
++    "net_ema.",
++    "lora_",
++]
++save_iter = 500
+diff --git a/tools/transplant_domain.py b/tools/transplant_domain.py
+new file mode 100644
+index 0000000..a6f1a45
+--- /dev/null
++++ b/tools/transplant_domain.py
+@@ -0,0 +1,124 @@
++#!/usr/bin/env python3
++# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: OpenMDW-1.1
++
++"""Transplant a trained embodiment-domain row into an untrained one.
++
++Why this exists
++---------------
++``action2llm`` / ``llm2action`` (exported as ``action_proj_in`` /
++``action_proj_out``) are ``DomainAwareLinear`` layers: their weights live in an
++``nn.Embedding(num_domains, out*in)``, so **every embodiment gets its own private
++row**. ``nvidia/Cosmos3-Edge-Policy-DROID`` was post-trained on DROID only, which
++is domain 8. SO-101 is domain 22.
++
++Measured on the released checkpoint:
++
++    action_proj_in.fc.weight   row 8 = 10.67   row 22 = 6.44  (== every other row)
++    action_proj_in.bias.weight row 8 =  1.56   row 22 = 0.000 (== every other row)
++
++So initialising SO-101 training from that checkpoint gives the action head
++*nothing* over the base model -- row 22 is still at ``xavier_uniform_`` init and
++the bias is still exactly zero. The only part of the action path that transfers
++for free is ``action_modality_embed``, which is a single shared 2048-vector.
++
++This script copies row 8 into row 22 so the SO-101 action head starts from
++DROID's trained manipulation mapping instead of from noise. Both embodiments are
++single-arm absolute ``joint_pos`` policies padded into the same 64-wide action
++space (DROID 7 joints + gripper, SO-101 5 joints + gripper), so the mapping
++between action tokens and hidden space is largely shared structure even though
++the per-column joint semantics differ.
++
++Only shard 2 carries the per-domain tensors, so every other file is hardlinked
++rather than copied.
++
++Usage::
++
++    python transplant_domain.py \
++        --src examples/checkpoints/Cosmos3-Edge-Policy-DROID \
++        --dst examples/checkpoints/Cosmos3-Edge-Policy-DROID-so101init \
++        --src-domain 8 --dst-domain 22
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import shutil
++from pathlib import Path
++
++import torch
++from safetensors import safe_open
++from safetensors.torch import save_file
++
++PER_DOMAIN_KEYS = (
++    "action_proj_in.fc.weight",
++    "action_proj_in.bias.weight",
++    "action_proj_out.fc.weight",
++    "action_proj_out.bias.weight",
++)
++
++
++def main() -> None:
++    ap = argparse.ArgumentParser(description=__doc__)
++    ap.add_argument("--src", required=True, type=Path)
++    ap.add_argument("--dst", required=True, type=Path)
++    ap.add_argument("--src-domain", type=int, default=8, help="trained domain (DROID)")
++    ap.add_argument("--dst-domain", type=int, default=22, help="target domain (SO-101)")
++    args = ap.parse_args()
++
++    src_tf = args.src / "transformer"
++    dst_tf = args.dst / "transformer"
++    index_path = src_tf / "diffusion_pytorch_model.safetensors.index.json"
++    weight_map = json.loads(index_path.read_text())["weight_map"]
++
++    target_shards = {weight_map[k] for k in PER_DOMAIN_KEYS}
++    if len(target_shards) != 1:
++        raise SystemExit(f"expected all per-domain tensors in one shard, got {target_shards}")
++    target_shard = target_shards.pop()
++    print(f"per-domain tensors live in: {target_shard}")
++
++    # Mirror the whole checkpoint, hardlinking everything we are not rewriting.
++    if args.dst.exists():
++        raise SystemExit(f"destination already exists: {args.dst}")
++    for dirpath, _dirnames, filenames in os.walk(args.src):
++        rel = Path(dirpath).relative_to(args.src)
++        if rel.parts and rel.parts[0] == ".cache":
++            continue
++        (args.dst / rel).mkdir(parents=True, exist_ok=True)
++        for fn in filenames:
++            s, d = Path(dirpath) / fn, args.dst / rel / fn
++            if rel == Path("transformer") and fn == target_shard:
++                continue  # rewritten below
++            try:
++                os.link(s, d)
++            except OSError:
++                shutil.copy2(s, d)
++
++    # Rewrite the one shard that carries the per-domain rows.
++    tensors: dict[str, torch.Tensor] = {}
++    metadata = {}
++    with safe_open(str(src_tf / target_shard), framework="pt") as f:
++        metadata = f.metadata() or {}
++        for k in f.keys():
++            tensors[k] = f.get_tensor(k)
++
++    for k in PER_DOMAIN_KEYS:
++        t = tensors[k]
++        before = t[args.dst_domain].float().norm().item()
++        t[args.dst_domain] = t[args.src_domain].clone()
++        after = t[args.dst_domain].float().norm().item()
++        src_n = t[args.src_domain].float().norm().item()
++        print(
++            f"  {k:30s} row{args.dst_domain}: {before:8.4f} -> {after:8.4f} "
++            f"(src row{args.src_domain} = {src_n:8.4f})"
++        )
++
++    save_file(tensors, str(dst_tf / target_shard), metadata=metadata)
++    print(f"wrote {dst_tf / target_shard}")
++    print("done")
++
++
++if __name__ == "__main__":
++    main()
